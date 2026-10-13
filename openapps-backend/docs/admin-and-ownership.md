@@ -1,0 +1,236 @@
+# Owner, admins & the "no god-mode" model
+
+**What's in here / when to read this:** how ownership works in OpenApps and why
+there is **no implicit creator bypass**. Read this whenever an app needs an
+admin/moderator/owner with data powers (moderation, config, refunds).
+
+> **Which "admin" do you mean?** If the admin is one of your **app's end-users** with
+> elevated in-app powers (a forum **moderator**, a game admin) that changes at runtime →
+> you're in the right place: make a data-plane `admins/$userId` collection (below). If the
+> admin **operates the app** (deploys policy/UI, manages billing/settings) — your team —
+> that's the **control plane**: use `openapps share --role` or the `access` block, see
+> [access-control.md](access-control.md). They're different; the `access` block does NOT
+> replace an `admins` collection. (`get(/admins/...)` = your collection; `get(/__admins__/...)`
+> = the reserved control-plane bridge.)
+
+> **Want "admins read/write everything"?** The cleanest path is the top-level
+> `roles` block — a scoped grant. See
+> [roles.md](roles.md). This doc covers the complementary, *per-document*
+> rule-based model (e.g. "an admin may hide any post") and how to keep the
+> admin set closed. The two compose.
+
+## The differentiator: invariants bind EVERYONE
+
+Firebase/Supabase ship a **service-role / admin SDK that bypasses your rules**.
+OpenApps does **not**. There is no creator god-mode on the data plane: the policy
+governs every actor, and **invariants bind everyone — the owner included.**
+Nobody — not the owner, not an admin, not a function — can violate an invariant.
+
+This is deliberate. "The owner can do anything" is exactly the hole that makes a
+governed backend ungovernable. So OpenApps splits authority into two planes:
+
+## Two planes
+
+| Plane | What it covers | Who has it | How |
+|---|---|---|---|
+| **Control plane** | Manage the app: deploy/replace policy + UI, add/remove collaborators, configure functions + secrets, billing, delete the app | **Owner + control roles** (`admin`/`developer`/`viewer`/`billing` + custom) | The owner's CLI account source: wallet/keypair or web account. Wallet keys can be attached with `openapps link`; others use `openapps share --role` / the `access` block — see [access-control.md](access-control.md) and [auth.md](../../openapps-frontend/docs/auth.md) |
+| **Data plane** | Read/write app **data** | **Whoever the policy rules + invariants allow — and ONLY them** | Declared in `policy.json`. **No owner bypass.** |
+
+The owner's legitimate reign is the *control plane* (it's their app). On the
+*data plane* the owner is just another `@user.id` — if you want the creator
+to moderate posts or issue refunds, you must **grant that explicitly in the
+policy**, and even then they remain bound by every invariant.
+
+> **Identity, in one line.** The SDK `user` object is `{ id, address, email }`.
+> `@user.id` is the **universal stable identity** — always present for an
+> authenticated user (for wallet logins it equals the wallet address; for
+> email/social logins it is the account identity). `@user.address` is a **real
+> onchain wallet address** — present for wallet logins, **null** for email-only
+> logins. `@user.email` is the verified, lowercased email (email logins only;
+> null for wallet). Use **`@user.id` for ownership / membership / admin gates**;
+> reserve `@user.address` for genuinely onchain / wallet operations. (Inside an
+> `onchain:true` collection only `@user.address` is allowed — `@user.id`,
+> `@user.email`, and `@user.isAnonymous` are forbidden there.)
+
+## Granting data powers explicitly — the admins collection
+
+Declare an `admins/$userId` collection and gate the privileged actions on
+membership in it. The create rule must include a **genesis clause** so the first
+admin can seed itself — see the bootstrap section below for why.
+
+```json
+{
+  "constants": { "FOUNDER": "<the-creators-user-id>" },
+  "admins/$userId": {
+    "fields": { "active": "Bool" },
+    "tier": "durable",
+    "rules": {
+      "read": "@user.id != null",
+      "create": "@user.id != null && (get(/admins/@user.id).active == true || @user.id == @const.FOUNDER)",
+      "update": "@user.id != null && get(/admins/@user.id).active == true",
+      "delete": "@user.id != null && get(/admins/@user.id).active == true"
+    }
+  },
+  "posts/$postId": {
+    "fields": { "author": "String!", "body": "String", "hidden": "Bool?" },
+    "tier": "durable",
+    "rules": {
+      "read": "true",
+      "create": "@user.id != null && @newData.author == @user.id",
+      "update": "@user.id != null && get(/admins/@user.id).active == true",
+      "delete": "@user.id != null && get(/admins/@user.id).active == true"
+    }
+  }
+}
+```
+
+*(Validates clean against the real PolicyValidator; `.active == true` implies
+the row exists, so it is at least as strict as an existence check.)*
+
+- Only an **active** admin **or the founder** can mint an admin. The
+  `@user.id == @const.FOUNDER` disjunct is the **genesis clause**: on a
+  fresh app where no admin row is active yet, it lets the
+  one constant founder identity create the first admin row (`admins/<FOUNDER>`,
+  seeded `{ "active": true }`). After that, `get(/admins/@user.id).active == true`
+  carries every subsequent promotion - the founder clause is dormant once an
+  active admin exists.
+- **`active` is a REAL off-switch.** Every privileged rule gates on
+  `get(/admins/@user.id).active == true`, never on mere existence, so setting a
+  misbehaving admin's row to `{ "active": false }` instantly revokes every power.
+  An active admin (or the founder) performs that write; a deactivated admin cannot
+  restore themselves because `update` also requires `.active == true` (no
+  self-reactivation). Because this registry declares `active`, never gate on
+  `get(/admins/@user.id) != null` alone - that checks only that the row exists and
+  turns `active` into a dead, decorative field that silently revokes nothing. (An
+  admin registry that declares **no** `active` field is a valid, simpler design;
+  there, revocation is by deleting the row - see [service-keys.md](service-keys.md).
+  The rule is only: never *declare* `active` and then *ignore* it.)
+- End-users default to **least privilege**: an author may create their own post;
+  only an active admin may hide or delete one.
+- The admin gate is the same `get()` expression every other rule uses —
+  so "who may moderate" stays declarative and readable, not buried in code.
+  Note the gate keys on `@user.id` (stable identity), so an email-login admin
+  (no wallet) and a wallet-login admin are gated identically.
+
+## Linked and web accounts: one stable identity across logins
+
+Web-account login and `openapps share` use the human's OpenApps account identity.
+`openapps link` is only for wallet/keypair CLI sources: it attaches that signing
+key (a detachable signing credential) to the same web account so the wallet key
+and web account become admin-collaborators ([auth.md](../../openapps-frontend/docs/auth.md)). Because you gate
+on `@user.id` — the **universal stable identity** (the web account's user id)
+that is the same regardless of which login the human used — you seed the admins
+collection **once** at the account's `@user.id`, and the gate matches every
+authenticated request from that account.
+
+This is exactly why ownership/membership should key on `@user.id` rather than
+`@user.address`: `@user.address` is the *specific acting wallet* (and is **null**
+for an email-only login), so gating membership on it would miss email logins and
+fracture across an account's wallets. Reserve `@user.address` for genuinely
+onchain operations where you need a real wallet pubkey.
+
+## Bootstrapping the first admin — the genesis flow
+
+There is a chicken-and-egg here that bites every fresh app: a create rule of
+**only** `get(/admins/@user.id).active == true` means you must *already* be an
+active admin to create one. On a brand-new app **nobody** is — the app owner is **not**
+implicitly an admin on the data plane (no god-mode). And `openapps data set` does
+**not** bypass create rules: the owner shows up as just another
+`@user.id`, so a genesis `set` to `admins/<owner>` is rejected with
+`403 Policy failed`. There is no system/bootstrap principal that side-steps the
+rule.
+
+The idiom that actually works, end to end:
+
+1. **Put a constant founder identity in the policy** —
+   `"constants": { "FOUNDER": "<user-id>" }` (use an `environments` block for a
+   per-env founder, see [environments.md](../../openapps-deploy/docs/environments.md)).
+2. **Add the genesis clause to the `admins` create rule** —
+   `get(/admins/@user.id).active == true || @user.id == @const.FOUNDER`
+   (shown in the collection above). This is the *only* sanctioned side door, and
+   it admits exactly one identity.
+3. **Seed once from the founder identity** — run
+   `openapps data set --path admins/<FOUNDER> --data '{"active":true}'` **as the
+   founder** (the identity whose `@user.id` equals `@const.FOUNDER`). Seeding
+   `active: true` is required, not cosmetic: every privileged gate reads
+   `.active == true`, so a row written without it (or with `false`) is inert. The
+   genesis disjunct now passes and the first active admin row lands.
+4. **Promote everyone else through the founder/admin** — every later
+   `admins/<x>` write is carried by `get(/admins/@user.id).active == true`; the
+   genesis clause never fires again once an active admin exists.
+
+The `create` rule above is the only write path into the admin scope, so every
+writer is already an admin except for the founder genesis, and there is no extra
+side door hiding in the rules. (Do **not** claim `openapps data set` alone seeds
+the admin — it is governed by the same create rule and 403s without the genesis
+clause.)
+
+## Keep the admin set closed
+
+The admin set is closed when every write path into it (create rules, hooks,
+plugin calls) requires the writer to already be an active admin, with the
+founder genesis as the only exception. Structure the `admins` collection as
+above, and never let a hook or a function write into it.
+
+For a multi-tenant app, keep a **flat `admins/$userId` registry** beside the
+nested tenant data and confine each admin to its tenant in the rules:
+
+```json
+{
+  "constants": { "FOUNDER": "<the-creators-user-id>" },
+  "admins/$userId": {
+    "fields": { "tenant": "String", "active": "Bool" },
+    "tier": "durable",
+    "rules": {
+      "read": "@user.id != null",
+      "create": "@user.id != null && ((get(/admins/@user.id).active == true && get(/admins/@user.id).tenant == @newData.tenant) || @user.id == @const.FOUNDER)",
+      "update": "@user.id != null && get(/admins/@user.id).active == true && get(/admins/@user.id).tenant == @data.tenant && @newData.tenant == @data.tenant",
+      "delete": "@user.id != null && get(/admins/@user.id).active == true && get(/admins/@user.id).tenant == @data.tenant"
+    }
+  }
+}
+```
+
+`create` and `update` require `get(/admins/@user.id).tenant == @newData.tenant`
+(or `== @data.tenant`), so an active admin of one tenant cannot create or edit
+an admin of another, and `update` pins `@newData.tenant == @data.tenant` so a
+row cannot be relocated to a foreign tenant. Keep the `@const.FOUNDER` branch
+**outside** the tenant-equality so genesis can still seed the first admin of any
+tenant. Every privileged rule gates on `.active == true`, not on mere existence,
+so `active: false` is a real off-switch (a revoked admin cannot reactivate
+themselves because `update` also requires `.active == true`).
+
+## Agent guidance — designing the admin model
+
+When you build an app, **identify who the owner/admin is** (the creator) and
+**what admin actions the app genuinely needs** (moderation, config, refunds).
+Then:
+
+1. Express each admin action as an **explicit, active-admin-gated rule**
+   (`get(/admins/@user.id).active == true`) - **never** as a bypass. When your
+   registry declares `active`, never gate on bare existence (which would make the
+   `active` off-switch inert); a registry that declares no `active` field may gate
+   on bare existence and revoke by deleting the row.
+2. Keep every constraint that must hold (caps, conservation, isolation) in an
+   **invariant** — admins are bound by it too.
+3. Default end-users to **least privilege**; widen only where the description
+   requires it.
+4. Add a **genesis clause** (`|| @user.id == @const.FOUNDER`) to the admins
+   create rule, then seed the founder's `@user.id` from the founder identity — see
+   the bootstrap flow above. A plain `openapps data set` without the clause 403s.
+5. Gate ownership/membership on `@user.id` (the always-present stable identity),
+   not `@user.address`. An email/social login does get a wallet by default, but
+   `@user.address` is still null for phone-only sessions, `auth.wallets: false`
+   apps, and the legacy lazy `authMode: "bounded"` path, and it is only
+   appropriate for onchain operations.
+
+If you catch yourself wanting "the owner can just do X," stop: write the rule
+that says *which* X and *to whom*, and let the runtime keep everyone honest.
+
+## Related
+
+- [auth.md](../../openapps-frontend/docs/auth.md) — CLI auth sources, `openapps login`, `openapps link`, email `openapps share`, collaborators
+- [policy-generation-guide.md](policy-generation-guide.md) — the "who is the admin?" step
+- [invariants.md](invariants.md) — the constraints that bind admins too
+- [functions.md](functions.md) — functions are gated by an `auth` rule, same admin pattern
+- [cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — `share`/`link`/`collaborators`

@@ -1,0 +1,352 @@
+# Service keys — let a backend function transact as its own identity
+
+Sometimes an OpenApps Function needs to act as **itself** — a backend/service
+identity — not as the user who invoked it. Examples: a payout bot that writes to
+a `payouts` collection only it may touch, a market-maker posting quotes, a cron
+job that settles balances. OpenApps supports this directly:
+
+> **A function declares `actAs: "<address>"`. It then transacts as that fixed
+> service identity, and the policy authorizes that address like any other
+> (`@user.address == @const.PAYOUT_BOT`).**
+
+Authorization stays in the policy, so the service identity can only do exactly
+what the policy grants its address. **A service identity is the app developer's
+own backend actor — OpenApps never custodies *user* funds.**
+
+Because `actAs` changes who `ctx.bounded` writes as, it is the privileged
+Functions mode. Gate every `actAs` function's `auth` rule on the app's admin
+predicate through a runtime-valid gate; nothing checks that for you. When the people who may
+run it are your own team, gate on the control-plane roster and declare nothing:
+`@user.id != null && (get(/__owners__/@user.id) != null || get(/__admins__/@user.id) != null)`
+admits the owner and every `openapps share --role admin` collaborator. When they
+are end-users of the app, gate on an app-data registry such as
+`get(/admins/@user.id) != null` and declare a bootstrap-safe `admins/$userId`
+collection with a founder genesis clause before deploying the Function; see
+[admin-and-ownership.md](admin-and-ownership.md#bootstrapping-the-first-admin--the-genesis-flow).
+Public user-invoked functions should usually omit `actAs` and write as the caller.
+
+> **Revocation - pick one and be consistent.** The bare `get(/admins/@user.id) != null`
+> gate above is valid when the `admins` registry declares **no** `active` field: you revoke
+> a compromised admin by **deleting** their row. If you want a reversible off-switch on
+> these money-adjacent payout/quote functions (flip an admin off *without* deleting the
+> row), instead declare an `active` field and gate every privileged rule **and** the
+> function `auth` on `get(/admins/@user.id).active == true` - see the real off-switch
+> pattern in [admin-and-ownership.md](admin-and-ownership.md). Do not declare `active` and
+> then gate on bare existence: that makes the switch inert (finding #392).
+
+### Who can act as a service identity? (by caller — read this before wiring a grant)
+
+The mode you use depends on **who invokes the function**, and they are not
+interchangeable:
+
+| Caller | Service-identity path | Notes |
+|---|---|---|
+| **A live tick** (`session.live` room) | **`session.live.runAs`** — declared once on the `live` block; all of this game's live `call`s run as it. Gate the called function with `auth: "@origin.kind == 'live' && @origin.module == '<game>'"`. | The ONLY way for a non-admin-triggered flow to act as a funded service identity. This is how `grantInk`-style conserved minting works. |
+| **A direct end-user** (SDK `invoke`, `@origin.kind == 'user'`) | **`actAs` — but it is ADMIN-GATED.** A user-invoked function may act as a service identity *only* if its `auth` rule gates on admins. `auth: "@user.id != null"` + `actAs: MINT` lets every signed-in user act as the service identity, and nothing refuses that for you: never ship it. | So a *non-admin* user-invoked function **cannot** be the service identity. Don't try to "mirror the live tick" inside a user-invoked function — there is no user-`runAs`. |
+| **A scheduled hook** (`@origin.kind == 'scheduled'`) | No `runAs` equivalent; it's the anonymous SYSTEM principal. A privileged write gated on `@origin` alone runs with no authenticated actor, so keep such a rule to the exact origin kind and module. | Route privileged scheduled writes through the live `runAs` too, or make the function admin. |
+
+**The pattern for a USER-triggered privileged/conserved write (the one people get
+wrong): split CLAIM from SETTLE.**
+
+1. **Claim** — the user-invoked function (writes as the player) does only what the
+   *player* is allowed to do: verify something (e.g. re-check a payment with the
+   provider via `fetch` + a secret), then record an **idempotent intent** doc
+   (create-only — `update: "false"` on that collection, keyed by a provider id so a
+   replay is denied). It does **not** touch the service-owned ledger/mint.
+2. **Settle** — the **live tick** (running with `runAs = <serviceIdentity>`)
+   `call`s a settle function gated `@origin.kind == 'live'`, which reads the
+   unsettled intents via `ctx.bounded`, does the privileged/conserved
+   `setMany([...])`, and flips the intent to settled. The live `runAs` is the only
+   thing that can authorize the service-owned leg.
+
+Because the claim record is **user-authored, it is untrusted** — the settle step
+must **re-derive every value from the trusted source** (re-verify, and take the
+amount/owner/product from the provider, never from the claim record). See the
+end-user-payments recipe in [billing.md](../../openapps/docs/billing.md#app-payments).
+
+## Fund an AI NPC / a live game call
+
+A live tick (`live.tick`) is pure and egress-disabled; to reach the outside
+world it returns a **call** that the room runs as a function — for an LLM NPC,
+something like `npcBrain`. See [ai-npcs.md](ai-npcs.md) and
+[principals-and-origins.md](principals-and-origins.md) for the full picture.
+
+The catch: **a live call runs as the anonymous SYSTEM principal by default**
+(`ctx.user = {id:null, address:null, email:null, system:true}`) — no human, no
+wallet, no account. `ctx.ai.run` bills the caller's `user.id`, so a system call
+has no account to bill and inference FAILS with a 402.
+
+### The simple way — `session.live.runAs` (session-wide identity)
+
+Declare a service wallet **once** on the room's `live` block and **every** live
+call this game makes runs AS it — funding all your AI NPCs from one account:
+
+```json
+{
+  "constants": { "NPC_BRAIN": "7nQ…address" },
+
+  "rooms/$roomId": {
+    "tier": "checkpointed",
+    "fields": { "status": "String", "tick": "UInt" },
+    "rules": { "read": "@user.id != null", "create": "@user.id != null",
+               "update": "false", "delete": "false" },
+    "session": {
+      "live": {
+        "module": "arena",
+        "everyMs": 33,
+        "calls": ["npcBrain"],
+        "runAs": "7nQ…address"
+      }
+    }
+  },
+
+  "functions": {
+    "npcBrain": { "auth": "@origin.kind == 'live' && @origin.module == 'arena'",
+                  "entry": "functions/npcBrain.ts" }
+  }
+}
+```
+
+With `runAs` set, the NPC function runs as the funded service identity
+(`ctx.user.id == ctx.user.address == runAs`), so `ctx.ai` works — no per-function
+field needed. Gate the function with its own `auth` rule on `@origin` so only
+your game's tick can reach it (a live call **does** evaluate the function's `auth`
+rule now, with `@user` = system + `@origin` populated — see
+[principals-and-origins.md](principals-and-origins.md)). Owner-declaring `runAs`
+**is** the authorization to act as it — same posture as `actAs` below.
+
+### The per-function override — `actAs`
+
+`actAs` on a single function pins that one function to a service identity and
+**wins over `runAs`** for that function only. Use it for a one-off that should
+act as a different identity than the game's session-wide one:
+
+```json
+{
+  "constants": { "NPC_BRAIN": "7nQ…address" },
+
+  "functions": {
+    "npcBrain": { "auth": "@origin.kind == 'live' && @origin.module == 'arena'",
+                  "entry": "functions/npcBrain.ts", "actAs": "7nQ…address" }
+  },
+
+  "messages/$id": {
+    "rules": { "read": "true", "create": "true",
+               "update": "false", "delete": "false" }
+  }
+}
+```
+
+> **Precedence (live calls):** function `actAs` > session `runAs` > anonymous
+> SYSTEM. Whichever applies, AI spend is always **capped at the app account**.
+> `@origin` + the `session.live.calls` whitelist say *who may call*; `runAs` /
+> `actAs` say *who the call acts as* — orthogonal and composable.
+
+```ts
+// functions/npcBrain.ts — runs as NPC_BRAIN (via runAs or actAs), so ctx.ai is funded
+export default async function npcBrain(args, ctx) {
+  // The idempotencyKey is REQUIRED: an NPC brain runs inside an at-least-once
+  // tick loop, so the same call can be re-emitted across ticks/checkpoints.
+  // A stable per-effect key replays one billed inference instead of paying for
+  // each retry; a genuinely new ask carries a new effectId and bills fresh.
+  const reply = await ctx.ai.run("zai/glm-5.3-flash", {
+    messages: [{ role: "user", content: args.prompt }],
+  }, { idempotencyKey: `npc:arena:${args.effectId}:reply:v1` });
+  return { ok: true, text: reply.response };
+}
+```
+
+Then whitelist it for the live session and have the tick call it:
+
+```json
+{ "session": { "live": { "calls": ["npcBrain"] } } }
+```
+
+```ts
+// inside live.tick — surface a call for the NPC to think
+return { state, call: { fn: "npcBrain", args: { prompt }, as: playerId } };
+// `as` is optional and a no-op on identity today — the call runs as runAs/actAs, NOT as playerId.
+```
+
+> **No private key needed for this.** `runAs` and `actAs` are policy fields, not
+> stored secrets — for AI and data-plane writes there is nothing to mint or leak.
+> A real private key is only required when the service identity must
+> *cryptographically sign* an on-chain Solana tx (see
+> [Key storage](#key-storage--the-important-part) below). Funding the NPC is just
+> crediting the service account's AI budget.
+
+Fund the service account so the NPC can think. The reply lands on a *later* tick
+as an `@effect` result on the checkpoint cadence — not instantly — so expect a
+short delay. See [ai-npcs.md](ai-npcs.md) for credit/rate caps and dedup
+(`effectId`).
+
+> **Identity vs. wallet, in one line.** When a function acts as a service
+> identity, `@user.address` is the *real wallet* the function transacts as, so
+> service-key rules compare it against a wallet pubkey constant
+> (`@user.address == @const.PAYOUT_BOT`). That is a genuine onchain/wallet
+> use of `@user.address` and stays as-is. For the *caller's* own identity —
+> ownership, membership, admin/auth guards on the people who invoke the function
+> — use the universal `@user.id` (always present; equals the wallet address for
+> wallet logins, the account identity for email/social logins). Never use
+> `@user.id`, `@user.email`, or `@user.isAnonymous` inside an `onchain:true`
+> collection — only `@user.address` is allowed there.
+
+## You can have as many as you want
+
+`actAs` is **per function**, so an app can declare **many** distinct service
+identities — `runPayouts` acts as `PAYOUT_BOT`, `postQuotes` acts as
+`MARKET_MAKER`, `settle` acts as `SETTLER`, each gated by its own policy rules.
+There is no single global service key; mint one identity per role.
+
+```json
+{
+  "constants": {
+    "PAYOUT_BOT":   "9aZ…address",
+    "MARKET_MAKER": "4kT…address"
+  },
+
+  "payouts/$id": {
+    "fields": { "to": "Address", "amount": "UInt" },
+    "rules": {
+      "read":   "@user.id != null",
+      "create": "@user.address == @const.PAYOUT_BOT",
+      "update": "false", "delete": "false"
+    }
+  },
+
+  "quotes/$id": {
+    "rules": { "read": "true",
+               "create": "@user.address == @const.MARKET_MAKER",
+               "update": "@user.address == @const.MARKET_MAKER", "delete": "false" }
+  },
+
+  "functions": {
+    "runPayouts": { "auth": "get(/admins/@user.id) != null",
+                    "entry": "functions/runPayouts.ts", "actAs": "9aZ…address" },
+    "postQuotes": { "auth": "get(/admins/@user.id) != null",
+                    "entry": "functions/postQuotes.ts", "actAs": "4kT…address" }
+  }
+}
+```
+
+```ts
+// functions/runPayouts.ts — ctx.bounded already acts as PAYOUT_BOT
+export default async function runPayouts(args, ctx) {
+  console.log("paying out", args.id);              // shows up in dashboard logs
+  await ctx.bounded.set(`payouts/${args.id}`, { to: args.to, amount: args.amount });
+  return { ok: true };
+}
+```
+
+The caller still has to pass the function's own `auth` rule to invoke it; the
+owner-declared `actAs` is the authorization to act as that address. The function
+code doesn't change — `ctx.bounded` simply writes as the service identity, and
+the `@const.PAYOUT_BOT` rule authorizes it.
+
+## Key storage — the important part
+
+**For data-plane writes, there is NO private key to store.** The service
+"address" is just the identity the owner's function is authorized to act as; the
+platform asserts it for the function and the policy gates it. Nothing to mint,
+nothing to leak, nothing to rotate. This is the recommended, most-secure path
+for the common case (writing/reading app data as a backend actor).
+
+You only need a **real keypair + private key** when the service identity must
+**cryptographically sign** — i.e. submit an on-chain Solana transaction (not
+just a data-plane write). In that case:
+
+- The **private key is a function secret**, declared once in the function's
+  `secrets` block (a redeploy preserves it — you do not restate it every time),
+  stored with `secret put`, and exposed only to that one function as
+  `ctx.env.NAME`.
+  The value stays server-side (never in your repo, never returned; only the *name* is ever shown).
+  `actAs` itself is a policy `functions`-block field and can also be replaced with `--act-as` on a standalone function deploy.
+  Set the secret value through stdin so it does not appear in argv or shell history, then declare the name on the function deploy when you want to replace that function's secret grant:
+  ```bash
+  printf '%s' "$PAYOUT_BOT_KEY" | openapps secret put PAYOUT_BOT_KEY --value-stdin --app-id <id>
+  openapps functions deploy runPayouts \
+    --entry functions/runPayouts.ts \
+    --app-id <id> \
+    --auth 'get(/admins/@user.id) != null' \
+    --act-as '9aZ…address' \
+    --secret PAYOUT_BOT_KEY
+  ```
+  A standalone `functions deploy` preserves omitted function metadata, including existing `actAs` and secret grants.
+  Supplying `--act-as` or `--secret` replaces the corresponding declaration.
+  The secret value itself remains in the app-scoped secret store until it is explicitly changed or removed.
+- If you mint the keypair locally, keep the private key in
+  `~/.bounded/keys/<name>.json` with `0600` perms (machine-local, never
+  committed) until you set it as the secret, then you can delete the local copy.
+  The **public address** is the only half that goes in the policy
+  (`constants` + `actAs`).
+
+| You need… | Private key? | Where it lives |
+| --- | --- | --- |
+| Write/read app data as a backend identity | **No** | nothing stored — just the address in policy |
+| Sign an on-chain Solana tx as the identity | Yes | function **secret** (server-side); local mint → `~/.bounded/keys/` `0600` |
+
+## `actAs` cannot log in — that is what the SERVICE USER is for
+
+`actAs` works because the **dispatcher** synthesizes the identity from a string in
+your policy: it swaps the caller for that address before your code runs. There is
+no key and no signature anywhere in that path, which is exactly why it needs
+nothing stored. It also means `actAs` only exists **inside** a dispatched
+function.
+
+Anything that authenticates from **outside** — a browser driving your deployed app
+to test it, a headless QA run signing in behind your auth — cannot use `actAs`.
+Logging in through the front door means signing a SIWS challenge, and a
+synthesized identity has nothing to sign with.
+
+For that, an app can admit an **agent identity**: a normal, non-privileged user
+whose private key the platform holds instead of you - the principal OpenApps'
+agents act as inside your app. It signs in like any other user;
+its reads and writes pass the same rules and the same invariants;
+`@user.id` is just an address. It gets **no implicit access to anything** — an app
+admits it by DECLARING its address as an ordinary policy constant and granting it
+whatever that app wants, in the same rule language as any other principal. That is
+what makes it safe rather than a backdoor: it is visible, the rules treat
+it like any other principal, and on an oApp it appears in the constitution, so
+holders can see that the platform holds a key which can act in their app and
+exactly what it may do.
+
+The two are complementary, not alternatives:
+
+| | `actAs` | agent identity |
+|---|---|---|
+| Key | none (synthesized) | held by the platform |
+| Usable from | inside a dispatched function | anywhere, including a browser login |
+| Can sign a challenge | no | yes |
+| Authorized by | your policy rules | your policy rules |
+
+Policies name it `@const.AGENT` by convention. **Grant it the least it needs, and
+on a live app that usually means READ** - the grant is the whole blast radius,
+because logging a browser in puts the token in your app's own `localStorage`
+where your page can read it. See
+[functions-ctx-browser.md](functions-ctx-browser.md#driving-your-app-signed-in--the-agent-identity) for
+driving a signed-in page with `ctx.browser`.
+
+## Security properties
+
+- **Policy is the gate.** Even acting as the right address, a function can only
+  do what the rule grants it. Prove it (`verifyAuthorityClosure`,
+  `checkImplication`) — never trust the address comparison alone.
+- **Scoped & owner-controlled.** The service identity is bound to one app and is
+  declared by the app owner (who controls both the function and the policy), so
+  there is no privilege escalation beyond what the owner already controls.
+- **No ambient key.** The data-plane path needs no private key at all; the only
+  private key in play is the optional on-chain signing key, isolated to its
+  function as a secret.
+- **One identity per role.** Don't reuse `PAYOUT_BOT` for unrelated writes; mint
+  another address and gate it separately.
+
+## When to use this vs. acting as the caller
+
+| You want… | Use |
+| --- | --- |
+| Write **on behalf of the user** who called the function | default `ctx.bounded` (acts as the caller) |
+| Write **as a backend identity** the user can't impersonate | a **service key** (`actAs`, this doc) |
+| A scheduled/cron write with no caller | a **service key** (`actAs`), or the SYSTEM principal |
+| **All** of a game's live calls to share one funded identity | `session.live.runAs` (session-wide; funds AI NPCs) — see [ai-npcs.md](ai-npcs.md) + [principals-and-origins.md](principals-and-origins.md) |
+| One live function to act as a *different* identity than the game's `runAs` | per-function `actAs` (overrides `runAs` for that function) |
+| A **live game call with no player** (e.g. an AI NPC) | declare `session.live.runAs` (or per-function `actAs`) — the live call is otherwise the anonymous SYSTEM principal and can't bill AI; see [ai-npcs.md](ai-npcs.md) |

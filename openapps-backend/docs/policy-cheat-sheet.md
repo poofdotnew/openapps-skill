@@ -1,0 +1,80 @@
+# Policy cheat sheet
+
+One screen of the things every policy uses. Full semantics: [policy reference](policy-reference.md). Onchain plugin signatures: [plugin catalog](../../openapps-onchain/docs/plugins.md).
+
+## Skeleton
+
+```json
+{
+  "constants": { "ADMIN": "8f...Yk" },
+  "tenants/$tenantId/invoices/$invoiceId": {
+    "description": "what this collection is",
+    "tier": "durable",
+    "fields": { "owner": "Address!", "amount": "UInt!", "paid": "Bool" },
+    "rules": { "read": "...", "create": "...", "update": "...", "delete": "..." },
+    "invariants": [],
+    "hooks": { "onchain": {}, "offchain": {} },
+    "queries": { "name": { "returnType": "UInt", "query": "..." } }
+  }
+}
+```
+
+Paths alternate collection/`$variable` (always an even number of segments). An omitted rule denies. Two templates may not collide modulo variable names.
+
+**No `auth` block by default.** Turnkey embedded wallets are provisioned eagerly, so an email/social login already carries `@user.address` - adding `auth.wallets` "to enable wallets" is redundant. Add it only when an EXTERNAL-keypair session signs in: bring-your-own wallet login, a `@bounded-sh/server` keypair client, or the CLI keypair data lane (an OpenApps Local app is reachable only that way). `auth.anonymous: true` is the separate opt-in for browser guests; `auth.wallets: false` opts out of embedded wallets.
+
+```json
+{ "auth": { "wallets": true } }
+```
+
+Details: [embedded wallets](../../openapps-onchain/docs/embedded-wallets.md).
+
+## Field types
+
+Exactly `String`, `Int`, `UInt`, `Bool` (never `Boolean`), `Float` (offchain only), `Address`; suffixes `?` optional, `!` readonly-after-create, `!?` both. No arrays or objects - use sub-collections. No `Timestamp` - use `UInt` seconds. The runtime rejects any later write that changes a `!` field, so no update-rule clause is needed. Reserved field names, refused at deploy: `id`, `pathId`, `absolutePath`, `relativePath` and every leading-`_` name (`_id`, `_createdAt`, ...). The document's own id is its path key (`$articleId`), never a field; name your own identifiers something else (`articleId`, `slug`, `number`). `fields` may be omitted, but then each field's type is inferred from the rules, so declare a field's type whenever rules compare it as more than one type - a fieldless collection whose rules compare one field to both a string and a number is refused at deploy and named.
+
+## Rule variables
+
+| Variable | Use | Restriction |
+|---|---|---|
+| `@user.id` | ownership, membership (universal principal) | offchain only |
+| `@user.address` | wallet semantics; the only principal in onchain rules | - |
+| `@user.email` / `@user.isAnonymous` | verified email; guest gate (`== false`, no unary `!`) | offchain only |
+| `@origin.kind` / `@origin.module` ... | platform-set call provenance (`'live'`, `'function'`, `'sponsorship'`, `'user'`) | offchain only |
+| `@data.f` / `@newData.f` | stored vs incoming field | not in create / not in delete |
+| `@time.now` | server rule clock (seconds); pair with `serverTimestamp()` | - |
+| `$pathVar` | path template variable | - |
+| `get(/p)` / `getAfter(/p)` | pre-transaction / staged post-write read | unquoted path, leading `/`; `getAfter` not in read rules |
+| `@const.X` / `@def.x` | declared constant / reusable rule fragment | never `@constants.` |
+
+## Operators
+
+`&&` `||`, `==` `!=` `<` `<=` `>` `>=`, `+ - * ** //` (integer division; plain `/` is for paths only). No ternary, no string concatenation: branch with `(cond && A) || (!cond && B)`; embed variables in paths directly (`get(/teams/@newData.teamId/members/@user.address)`).
+
+## Tiers
+
+`durable` (committed before success; required for `rollingSum` and materialized/sharded conservation) - `checkpointed` (interval-batched) - `ephemeral` (in-memory). See [policy reference](policy-reference.md#tiers).
+
+## Where logic goes
+
+| You want | Plane |
+|---|---|
+| authorization / validation (403) | `rules` - pure boolean, enforced on every write |
+| cross-transaction caps, conservation, tenant isolation (409) | `invariants`: `rollingSum`, `windowSum`, `flowBound`, `conserve`, `tenantTag`, `tenantEdge`, `bound` - [invariants](invariants.md) |
+| side effects on write | `hooks.offchain` (DocumentPlugin only; post-commit, never gates) / `hooks.onchain` (all onchain plugins; `false` aborts the whole Solana write) - [hooks](hooks-scheduled-webhooks.md) |
+| moving funds, custody | `hooks.onchain` + the custody rule - [custody and PDAs](../../openapps-onchain/docs/custody-and-pdas.md) |
+| read shaped for clients | `queries` (named, typed) - [queries](queries.md) |
+| server logic beyond expressions | functions - [when to use](functions-when-to-use.md) |
+
+## Onchain collection extras
+
+`"onchain": true` requires `"read": "true"`; rules use `@user.address` only; no `Float`; cannot `get()` offchain collections; updates are patches - omit `!` fields from update payloads or the program rejects with `FieldReadOnly`. Real-network budgets and failure lookup: [onchain troubleshooting](../../openapps-onchain/docs/onchain-troubleshooting.md).
+
+## Most common rejections
+
+1. `Boolean` as a type (use `Bool`); `Number`/`Timestamp` (use `UInt`).
+2. A later write that changes a `!` field (the runtime rejects it; no update-rule clause helps or is needed).
+3. Mutating plugin call in `rules` or in `hooks.offchain` (belongs in `hooks.onchain`).
+4. Client-computed "now" compared against `@time.now` (use `serverTimestamp()`).
+5. `@user.id`, `@origin.*`, or `Float` inside an `onchain: true` collection.
+6. A field named `id` (or another reserved name above): rename it, the path key already identifies the document.

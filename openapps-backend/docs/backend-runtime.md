@@ -1,0 +1,250 @@
+# Backend Runtime
+
+What's in here: when to use OpenApps' hosted backend runtime instead of a short
+function, the public project shape, and the `ctx` capabilities app code can rely
+on.
+
+Use backend runtime when an app needs:
+
+- long-running or multi-step work,
+- persistent agent state,
+- schedules that coordinate repeated work,
+- custom npm dependencies,
+- AI calls through `ctx.ai`,
+- managed third-party API calls through `ctx.services`,
+- access to app data through `ctx.bounded`,
+- secrets through `ctx.secrets`, or
+- controlled outbound HTTP through declared hosts.
+
+Use a normal OpenApps function for short request/response tasks.
+
+## Project Shape
+
+Create a directory with a manifest and a TypeScript entry:
+
+```text
+my-agent/
+  bounded.manifest
+  index.ts
+```
+
+`bounded.manifest`:
+
+```json
+{
+  "name": "my-agent",
+  "kind": "agent",
+  "entry": "index.ts",
+  "dependencies": { "ms": "^2.1.3" },
+  "allowedHosts": ["api.example.com"],
+  "aiCapUSD": 1,
+  "secrets": ["EXAMPLE_API_KEY"]
+}
+```
+
+- `kind`: `"agent"` for `onInvoke`/`onSchedule`, or `"backend"` for a `fetch`
+  handler. Both are invoked the same way: `POST /agents/<name>/<session>` on
+  the app's API host (or `openapps runtime invoke`) with an OpenApps app token.
+  The runtime does **not** serve arbitrary HTTP paths; for a REST route, a public
+  JWKS, or any endpoint machines call without a session, declare a
+  [public function](public-functions.md) instead.
+- `dependencies`: npm packages bundled for the backend runtime.
+- `allowedHosts`: the outbound `ctx.fetch` allowlist. Egress is deny-by-default,
+  so a host you do not list is refused (`egress_denied`) - declare every host the
+  backend calls up front rather than discovering the block at runtime.
+  Each entry is a bare hostname such as `api.example.com`, which also covers its
+  subdomains; an IP literal, a full URL, or a `host:port` is never a valid
+  declaration.
+  Loopback, private, `*.local`/`*.internal`, and cloud-metadata hosts are always
+  rejected, and a redirect to any undeclared or internal host is refused at the
+  hop rather than followed.
+- `aiCapUSD`: app-level spend cap for `ctx.ai`.
+- `secrets`: names declared in the manifest. Set values with
+  `openapps secret put`.
+
+Use `openapps runtime init` to scaffold the current manifest format.
+
+## Public `ctx` Surface
+
+| Capability | Use |
+|---|---|
+| `ctx.bounded` | read/write the app's OpenApps data under policy checks |
+| `ctx.store.get/put` | store small app-scoped runtime state |
+| `ctx.ai.run` | call AI models against the app/account spend controls |
+| `ctx.services.search/describe/invoke` | discover and call OpenApps-managed third-party APIs, billed to the credit pool |
+| `ctx.secrets.get` | read declared app secrets |
+| `ctx.fetch` | call allowed outbound hosts |
+| `ctx.schedule` | schedule follow-up work |
+| `ctx.identity` | read the acting user/service context |
+| `ctx.log` | write tagged runtime logs |
+
+Use `openapps services search "<query>" --json` and
+`openapps services describe <toolkit-or-tool-slug> --json` while building to find
+the right managed API/tool shape. Runtime code can also use
+`ctx.services.search` and `ctx.services.describe` for agent planning. Use
+`ctx.services.invoke` at runtime when OpenApps manages that provider. Invoke is
+cost-bearing, billed at the applicable upstream service cost plus 5%, and fails
+closed when the app owner's credit pool is exhausted. If a
+provider is not enabled in the managed proxy, integrate it directly with
+`ctx.fetch` and store the provider key in OpenApps secrets.
+
+Provider keys belong in OpenApps secrets, not frontend code.
+
+## Agent Entry
+
+```ts
+export default {
+  async onInvoke(input, ctx) {
+    // OpenApps verifies the caller's app token before onInvoke runs, but it does
+    // NOT evaluate a policy `auth` rule for an agent invocation: every signed-in
+    // user of the app reaches this handler. Authorization is YOURS - and this
+    // handler holds the app's secrets, services, queues and schedules, so
+    // "signed in" must not mean "may drive them". Fail closed on no user, then
+    // authorize WHO may run this agent (check ownership/role keyed on
+    // `ctx.identity.user`) before touching a secret or a tool. `ctx.identity` is
+    // ALWAYS a populated object, so a bare `!ctx.identity` check fails open - gate
+    // on `ctx.identity.user`, which OpenApps sets from the verified token and a
+    // caller cannot supply.
+    if (!ctx.identity.user) {
+      return { ok: false, error: "unauthorized" };
+    }
+    // If this agent is DELIBERATELY public to any signed-in user (a chatbot, a
+    // support bot), say so explicitly here and skip the role check - but that is a
+    // decision you make, not a default you inherit.
+    // e.g. if (!(await isTeamMember(ctx, ctx.identity.user))) return { ok: false, error: "forbidden" };
+
+    await ctx.store.put("last-input", JSON.stringify(input));
+
+    const apiKey = await ctx.secrets.get("EXAMPLE_API_KEY");
+    const jobId = String(input.jobId);
+    const ai = await ctx.ai.run("model-id", {
+      messages: [{ role: "user", content: "Summarize the latest job state." }]
+    }, { idempotencyKey: `runtime:job:${jobId}:summary:v1` });
+    const summary = ai.response ?? ai.choices?.[0]?.message?.content ?? "";
+
+    const events = await ctx.services.invoke("SEAT_GEEK_SEARCH_EVENTS", {
+      q: input.query ?? "basketball"
+    }, { idempotencyKey: `runtime:job:${jobId}:events:v1` });
+
+    const response = await ctx.fetch("https://api.example.com/jobs", {
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+    });
+
+    await ctx.bounded.set("jobs/last", {
+      ok: response.ok,
+      summary,
+      events: events.result
+    });
+    await ctx.schedule.every("poll", 60);
+
+    return { ok: true };
+  },
+
+  async onSchedule(name, ctx) {
+    ctx.log("schedule fired", { name });
+  }
+};
+```
+
+For `kind: "backend"`, export a `fetch` handler.
+It is reached only through `POST /agents/<name>/<session>` with an OpenApps app
+token, and it receives a synthesized `POST` whose JSON body is the invoke input -
+not the caller's original method or path - so route on the body, not on
+`req.url`. OpenApps verifies the caller's app token before your handler runs, but
+it does **not** evaluate a policy `auth` rule for a backend route, so
+authorization is yours: every signed-in user of the app reaches the same handler.
+Gate on the acting user and fail closed:
+
+```ts
+export default {
+  async fetch(req, ctx) {
+    // `ctx.identity` is ALWAYS a populated object, so a bare `!ctx.identity`
+    // check never fires and fails OPEN. Gate on the acting user instead:
+    // `ctx.identity.user` is the platform-verified caller id (null/empty when the
+    // token carries no user), and it is set by OpenApps from the verified token -
+    // a caller cannot supply it. Fail closed, then authorize the specific action.
+    if (!ctx.identity.user) {
+      return new Response("unauthorized", { status: 401 });
+    }
+    // Being signed in is not being allowed: check ownership/role for what this
+    // route does, keyed by ctx.identity.user, before reading or writing.
+    return Response.json({ ok: true });
+  }
+};
+```
+
+One subtlety if you also write policy rules: `ctx.identity.user` is the caller's
+platform-resolved account identity, not necessarily the same string as `@user.id`
+in a policy rule for the same human (a wallet login and an email login on one
+account resolve differently).
+Use it for "who is calling this backend route", and let policy rules on
+`ctx.bounded` writes do the per-collection authorization.
+
+## Boundaries
+
+- Backend runtime code is ordinary imperative code; only its writes are governed by policy.
+- A `kind: "backend"` `fetch` handler runs behind token verification but **not**
+  behind a policy `auth` rule, so it is reachable by every signed-in user of the
+  app and must authorize its own actions. `ctx.identity` is always a populated
+  object, so gating on the bare `!ctx.identity` fails open; gate on the acting user
+  (`ctx.identity.user`, null/empty when the token carries no user) and fail closed
+  (`401`), then check ownership for the specific action.
+- Writes through `ctx.bounded` still pass the app's policy rules and invariants.
+- `allowedHosts` and `ctx.secrets` keep provider credentials out of frontend
+  code.
+  Egress is deny-by-default: `ctx.fetch` reaches only the hostnames in
+  `allowedHosts`, and every redirect hop is re-checked against that same
+  allowlist.
+  Loopback, private, link-local, `*.internal`/`*.local`, IP-literal, and
+  cloud-metadata targets are refused whether you declared them or a redirect
+  tried to reach them.
+- `ctx.ai` spends against the credit pool and app-level caps. When a cap or
+  the pool is exhausted, calls fail closed.
+- `ctx.services.invoke` spends against the same credit pool and
+  uses the applicable upstream service cost plus 5%. Search/describe are catalog
+  reads.
+- Both cost-bearing surfaces require a 1–256-byte app-global idempotency key.
+  Direct HTTP function callers must also supply an outer `Idempotency-Key`;
+  otherwise the runtime refuses provider work before charge. Include the
+  callsite/entity/revision in each key and never rotate it after an ambiguous
+  response.
+- For AI NPCs or agents that act in realtime rooms, also read
+  [ai-npcs.md](ai-npcs.md) and [service-keys.md](service-keys.md).
+
+## Long-Running Work
+
+Do not run multi-minute jobs in a short function. Split long work into resumable
+steps and schedule the next step after each successful checkpoint. Make each step
+idempotent so retries are safe.
+
+Recommended pattern:
+
+1. Store job state in an OpenApps collection or `ctx.store`.
+2. Process a bounded amount of work per step.
+3. Write progress before scheduling the next step.
+4. Stop when complete or when the user's cap or credit pool is exhausted.
+
+## Deploy
+
+Deploy backend runtime code with the OpenApps CLI for an app you own:
+
+```bash
+openapps runtime init my-agent
+cd my-agent
+openapps runtime deploy --app-id <id>
+openapps runtime info --app-id <id>
+openapps runtime invoke my-agent --app-id <id> --data '{"name":"Amit"}'
+```
+
+Use the current CLI help for exact flags:
+
+```bash
+openapps runtime --help
+```
+
+## Related
+
+- [functions.md](functions.md) — short functions
+- [secrets.md](secrets.md) — provider keys
+- [billing.md](../../openapps/docs/billing.md) — buckets and caps
+- [agents-flue.md](agents-flue.md) — multi-step agent loop

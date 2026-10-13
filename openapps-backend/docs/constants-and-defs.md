@@ -1,0 +1,212 @@
+# Constants (`@const`) and Defs (`@def`)
+
+**What's in here:** two additive top-level policy blocks that keep policies DRY —
+`constants` for named values (`@const.NAME`) and `defs` for reusable rule
+fragments (`@def.name`). Both are resolved at **compile time** (server-side,
+during deploy), so the stored policy contains only literals.
+For *per-environment* values see [environments.md](../../openapps-deploy/docs/environments.md).
+
+## constants — named values
+
+```json
+{
+  "constants": { "ADMIN": "7xKQ...wallet", "DAILY_CAP": 5000, "OPEN": true },
+  "roles": { "admin": { "members": ["@const.ADMIN"], "read": "*" } },
+  "spend/$id": {
+    "rules": { "read": "@user.id != null", "create": "@user.id != null", "update": "false", "delete": "false" },
+    "fields": { "amount": "UInt" },
+    "tier": "durable",
+    "invariants": [ { "type": "rollingSum", "name": "cap", "field": "amount", "windowSeconds": 86400, "limit": "@const.DAILY_CAP" } ]
+  }
+}
+```
+
+- Values may be **string, number, or boolean**.
+- Reference anywhere an authored policy value appears except within a reserved `constants` or `defs` block: rule strings, role members, invariant limits, field defaults, and a function's `actAs` service identity.
+  In those fields, an exact `@const.NAME` in a non-expression (data) position, `functions.<name>.actAs` included, is replaced by the constant's value.
+  Constant values are literals and are not recursively macro-resolved, so do not define one constant as another `@const` token.
+  (`@def` is a rule fragment and is rejected in a data position.)
+- **Type is preserved when the whole value is one `@const`**: `"limit": "@const.DAILY_CAP"`
+  compiles to the number `5000`, not the string `"5000"`.
+- **Embedded in a rule, strings are quoted, numbers/bools are raw** (matching the
+  CLI's convention): `"read": "@user.id == @const.ADMIN"` →
+  `@user.id == 'acct_...admin'`; `"@data.n > @const.DAILY_CAP"` →
+  `@data.n > 5000`.
+
+## Platform-injected constants (`@const.BOUNDED_*`)
+
+Every app can reference platform-computed constants without declaring them.
+They are computed from the target app id and merged into the policy's `constants` block at deploy time (before macro resolution), so the runtime sees the platform's value, never an author-supplied one.
+
+| Name | Value |
+|---|---|
+| `BOUNDED_APP_ID` | The app's own 24-hex id. |
+| `BOUNDED_TREASURY_PDA` | The app's treasury address: the PDA of its `treasury` named account (the same address `@AccountPlugin.getAccountAddress("treasury")` resolves to). Point revenue directions here. |
+| `BOUNDED_PUBLIC_PRINCIPAL_<FN>` | The reserved principal a `public: true` function runs as when the caller presents no OpenApps identity (`__bounded_public_v1__:<sha256>`), one per public function. `<FN>` is the function name uppercased, non-alphanumerics as `_`: `broker` gives `BOUNDED_PUBLIC_PRINCIPAL_BROKER`. `openapps functions list` and a public deploy print the same value. |
+| `BOUNDED_BROWSER_PRINCIPAL_<FN>` / `BOUNDED_WEBHOOK_PRINCIPAL_<FN>` | The same for a `browser`-public or `webhook` function (`__bounded_browser_v1__:` / `__bounded_webhook_v1__:` namespaces). |
+
+Naming the principal is what makes it usable in rules: `@user.id == @const.BOUNDED_PUBLIC_PRINCIPAL_BROKER` admits exactly that route, and `@user.id != null && @user.id != @const.BOUNDED_PUBLIC_PRINCIPAL_BROKER` keeps the anonymous route out of a collection a bare `@user.id != null` would open to it (the public principal has a non-null id). See [public functions](public-functions.md#who-is-calling).
+
+Rules:
+- A policy MAY declare a `BOUNDED_*` name to self-document, but only with the exact platform value — a divergent value fails deploy closed.
+  Never hand-write a different address; that is exactly the smuggle the injection exists to prevent.
+- The three `BOUNDED_*_PRINCIPAL_*` namespaces are platform-managed: two public-surface functions whose names differ only by case (`getUser` and `GETUSER`) would share one constant and are refused at deploy; a declared name in those namespaces that no function produces is a stale value from a withdrawn surface (dropped, and a rule still naming it then fails with `@const.X is not defined`) unless it is not even a well-formed principal, in which case it is refused. Author constants outside those namespaces may still start with `BOUNDED_`.
+- Local apps get the same treatment automatically: the local control plane derives from the local app id, so a local policy's `BOUNDED_TREASURY_PDA` is the local app's own treasury PDA.
+  Policy-test fixtures may declare any `BOUNDED_*` value (the sandbox is the mock lane); real deploys recompute and reject a mismatch.
+
+## defs — reusable rule fragments
+
+```json
+{
+  "constants": { "ADMIN": "acct_...admin" },
+  "defs": {
+    "isOwner": "@user.id == @data.owner",
+    "isAdmin": "@user.id == @const.ADMIN",
+    "canEdit": "@def.isOwner || @def.isAdmin"
+  },
+  "posts/$id": {
+    "rules": {
+      "read": "true",
+      "create": "@user.id == @newData.owner",
+      "update": "@def.canEdit && @newData.owner == @data.owner",
+      "delete": "@def.isAdmin"
+    },
+    "fields": { "owner": "String", "body": "String" }
+  }
+}
+```
+
+- A def is a **rule-fragment string**. Reference it as `@def.name`.
+- Defs are inlined **wrapped in parens** so they compose safely inside larger
+  boolean expressions: `@def.canEdit` above becomes  `((@user.id == @data.owner) || (@user.id == 'acct_...admin'))`.
+- Defs may reference **other defs and constants** (resolved recursively). A
+  **cycle is a compile error**.
+
+> **Identity vs. wallet in these fragments.** The runtime `user` object is
+> `{ id: string, address: string | null, email: string | null, isAnonymous: boolean }`:
+> - `@user.id` — the **universal stable identity**, always present for an
+>   authenticated user (equals the wallet address for wallet logins; the account
+>   identity for email/social logins). **Use this for ownership / membership /
+>   admin / auth-guard checks** — the `isOwner` / `isAdmin` defs above.
+> - `@user.address` — a **real onchain wallet address**; present for wallet
+>   logins and, by default, for supported email/social logins too (an eagerly
+>   provisioned embedded Turnkey wallet), and **null** for phone-only sessions,
+>   `auth.wallets: false` apps, and the legacy lazy `authMode: "bounded"` path.
+>   Use it for onchain / wallet semantics. In `onchain: true` collections, `@user.id` and `@user.email` are
+>   forbidden — only `@user.address` is allowed there.
+> - `@user.email` — the verified, lowercased email (email logins only; null for
+>   wallet). Use it for email-gating.
+> - `@user.isAnonymous` — true only for a browser guest; offchain-only.
+>
+> So an offchain `ADMIN` constant holds a `@user.id` value (e.g. `acct_...`),
+> and `owner` fields that store identity should be `String` (not `Address`).
+
+## Resolution model (where it happens)
+
+```
+policy.json ──► (deploy) ──► resolvePolicyMacros ──► validate ──► compile ──► store
+                                       @const / @def inlined          literals only
+```
+
+- Runs **before** validation and bytecode compilation — so runtime
+  enforcement only sees literals. Macros add **no runtime cost**.
+- The `constants`/`defs` blocks are kept on the stored policy for transparency
+  (they are reserved keys; they are never treated as collections).
+- **Errors** (surfaced at `openapps deploy`):
+  - `@const.X is not defined in the constants block`
+  - `@def.x is not defined` / dangling macro with no source block
+  - `cyclic @def reference involving "x"`
+  - `constants.X must be a string, number, or boolean`
+
+## `ctx.constants` — policy constants at runtime
+
+Backend code gets the policy's `constants` block at runtime as a read-only,
+deep-frozen object — no more hardcoding values that already live in policy:
+
+```js
+// functions (every path: invoked, scheduled, queued, live-call effects)
+export default async function settleMatch(args, ctx) {
+  if (ctx.user.id !== ctx.constants.SETTLER) throw new Error("not the settler");
+  // ...
+}
+```
+
+- Available in **OpenApps Functions** (`ctx.constants`) and **live modules**
+  (tick `ctx.constants`, refreshed when the policy redeploys and preserved
+  across room eviction).
+- `{}` when the policy has no `constants` block. Values are the exact scalars
+  `@const.NAME` resolves to in rules — one source of truth for rules AND code.
+- **Not yet available in agent (flue) runtimes** — agents get their config at
+  artifact-deploy time today; pass needed values via agent env/args until the
+  policy channel is wired.
+
+## `@const` in standalone `openapps functions deploy --auth`
+
+`@const.NAME` works in a function's `auth` rule when deploying the function
+standalone too — the server resolves macros against the app's **deployed
+policy** `constants` block before validating, exactly like a full policy
+deploy. (Older server builds rejected this with "not a valid special
+variable"; if you hit that, redeploy the policy with the function block
+instead, or upgrade.)
+
+The canonical service-identity pattern lines all three identities up from ONE
+constant:
+
+```jsonc
+"constants": { "SETTLER": "5jEJ..." },
+"session":   { "live": { "runAs": "@const.SETTLER" } },
+"functions": { "settleMatch": { "auth": "@user.id == @const.SETTLER" } },
+"matchResults": { "$roomId": { "create": "@user.id == @const.SETTLER" } }
+```
+
+The live room acts as `@const.SETTLER`, only that identity may invoke
+`settleMatch`, and only it may write settlement rows — change the wallet in
+one place. See [live-runtime.md](live-runtime.md) §"Authorization and identity"
+for `runAs`/`actAs` precedence.
+
+### Per-environment service identity (`actAs`)
+
+`actAs` is a data field, so a function can name the constant instead of
+hardcoding the address, and an
+[`environments`](../../openapps-deploy/docs/environments.md) entry can then
+select a different service identity per environment:
+
+```jsonc
+"constants":    { "STEWARD": "PrdSteward111..." },
+"environments": {
+  "staging":    { "appId": "<staging-app-id>", "constants": { "STEWARD": "StgSteward222..." } },
+  "production": { "appId": "<production-app-id>" }
+},
+"functions": {
+  "sweep": {
+    "auth":  "get(/admins/@user.id) != null",
+    "entry": "functions/sweep.ts",
+    "actAs": "@const.STEWARD"
+  }
+}
+```
+
+`openapps deploy ./policy.json --environment staging` overlays the staging
+constants, so the deployed policy carries `"actAs": "StgSteward222..."`.
+The production entry overrides nothing, so it resolves the top-level default
+and the production-resolved policy is byte-for-byte what it was.
+Rotating the staging key is then a one-line constant edit that cannot touch
+the production identity.
+
+## `@const` vs `@constants` vs `--constants` (don't confuse them)
+
+| Token / flag | Source | Resolved | Use for |
+|---|---|---|---|
+| **`@const.NAME`** | the policy's `constants` block | server-side, compile time | the normal case — values that live with the policy |
+| `--constants NAME=value` (CLI flag) | command line | client-side, before send | one-off overrides / CI injection — **overrides `@const.NAME`** (overlaid onto the `constants` block, winning over any `environments` value; digit-only values become numbers) and also fills legacy `@constants.NAME` |
+| `@constants.NAME` (legacy) | `--constants` flags | client-side text substitution (write it **unquoted**: `"limit": @constants.CAP`) | pre-existing; prefer `@const` + a block |
+
+For values that differ per environment (preview vs prod admin address, caps),
+keep `@const.NAME` and supply the values from an `environments` block —
+[environments.md](../../openapps-deploy/docs/environments.md).
+
+## Related
+- [environments.md](../../openapps-deploy/docs/environments.md) — per-environment `@const` values and appId targeting, plus the other two axes an entry can vary: schedule cadence and which functions deploy
+- [roles.md](roles.md) — `@const.ADMIN` in role members
+- [invariants.md](invariants.md) — `@const` for caps/limits
+- [policy-reference.md](policy-reference.md) — all top-level blocks

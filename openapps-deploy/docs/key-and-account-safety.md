@@ -1,0 +1,444 @@
+# Key & account safety — wallet keys and web sessions
+
+**Advanced reference.** Read this only when a user deliberately selects local
+wallet signing, a named key profile, `BOUNDED_PRIVATE_KEY` for CI, or recovery of
+an existing key-owned app. Normal projects use the web account selected by
+`openapps init`; see [accounts.md](accounts.md).
+
+> **TL;DR.** In wallet/keypair mode, `~/.bounded/credentials`, a profile key, a
+> project key, or `BOUNDED_PRIVATE_KEY` owns the apps created with it. Treat that
+> key like an SSH private key: back it up, run `openapps link` on day one, or share
+> a backup owner. In web account mode, run `openapps login`; the CLI opens the
+> hosted sign-in page and uses `~/.bounded/web-session.json` instead
+> of a local key. Public `bounded.json` and `.bounded/app.json` are safe to commit;
+> credentials and web-session files are not.
+
+## 1. Wallet credentials own apps in wallet/keypair mode
+
+When you first run a command that needs auth (e.g. `openapps whoami` or
+`openapps deploy --create`) under a wallet/keypair source, the CLI creates or loads
+a keypair with **zero ceremony**:
+
+- `~/.bounded/credentials` — the global wallet key, one base58-encoded **64-byte
+  Solana ed25519 secret key** (32-byte seed + 32-byte pubkey). File mode `0600`,
+  directory `~/.bounded` mode `0700`.
+- `~/.bounded/accounts/<profile>/credentials` — a named wallet profile.
+- `<project>/.bounded/credentials` — a repo-local wallet key, gitignored.
+- `BOUNDED_PRIVATE_KEY` — an env-provided wallet key for CI/automation.
+- It is **auto-generated on first use**, the address is printed once to stderr, and
+  the private key is **never shown again** and **never auto-backed-up** anywhere.
+- **This key owns apps created with it.** `openapps deploy --create` makes an app
+  owned by the active CLI identity. In wallet/keypair mode, that means the keypair.
+
+**The hard truth for wallet mode:** if you lose the wallet key and you never
+linked it to a web account, shared the app with a backup owner, or backed it up,
+the apps it created are unrecoverable. There is no "forgot my key" flow, no
+support master-reset, and no way to re-mint ownership for that key.
+
+So treat this file exactly like an **SSH private key**: back it up somewhere safe,
+don't paste it anywhere, and set up a recovery path (`openapps link`) *before* you
+have anything to lose.
+
+If the project uses `account.keySource:"web"`, the CLI does not use a local wallet
+key for control-plane auth. It uses `~/.bounded/web-session.json`, created by
+`openapps login` through hosted browser sign-in, and refreshes the session when
+possible. `openapps login --email ...` is the terminal OTP fallback.
+
+## 2. `BOUNDED_PRIVATE_KEY` — wallet CI override
+
+For wallet-mode CI / automation, set the base58 secret key in the
+`BOUNDED_PRIVATE_KEY` env var. When selected as the account source, it supplies the
+wallet key without reading any credentials file.
+
+For wallet/keypair projects, a non-empty `BOUNDED_PRIVATE_KEY` has higher precedence than `account.keySource:"global"`, `"project"`, or `"profile"`.
+This is intentional for CI, but it can silently select a different owner if the variable leaks into an interactive shell.
+Before a sensitive deploy that must use a particular stored key, run `openapps whoami --json` and require the expected `keySource` and public address, or fail closed when `BOUNDED_PRIVATE_KEY` is present.
+An explicit `account.keySource:"web"` continues to use the web session for control-plane commands.
+In JSON output, `keySource` is the stable enum `global`, `project`, `env`, `web`, `profile`, or `unknown`.
+The separate `keyLocation` field carries the descriptive source such as `global (~/.bounded/credentials)`.
+Automation must compare the enum instead of parsing the descriptive label.
+
+- It is a **secret**. Never commit it, never log it, never echo it. Store it in your
+  CI provider's secret manager.
+- It must be the **same key** that owns the apps your CI touches (or a linked /
+  shared collaborator) — a different key is a different account that can't see your
+  apps.
+
+## 3. Account source resolution
+
+The public `bounded.json` can select `global`, `project`, `profile`, `env`, or
+`web`; it never stores a private key or web token.
+
+| Config | Auth material |
+|---|---|
+| `{"keySource":"web"}` | `~/.bounded/web-session.json` (OpenApps Auth session; run `openapps login`) |
+| `{"keySource":"env"}` | `BOUNDED_PRIVATE_KEY` |
+| `{"keySource":"profile","profile":"client-a"}` | `~/.bounded/accounts/client-a/credentials` |
+| `{"keySource":"project","keyPath":".bounded/credentials"}` | `<project>/.bounded/credentials` |
+| `{"keySource":"global"}` | `~/.bounded/credentials` |
+
+When `keySource` is `web`, control-plane commands use the web session. Commands
+that require a local wallet signer fail with a clear message and ask you to pick
+`project`, `global`, `profile`, or `env`; they should not silently link or create
+a key. The one exception is the mainnet policy-deploy permit, which a web
+session signs through a per-deploy browser approval with the account's own
+wallet rather than a local key (see the **openapps-onchain** skill). When a
+wallet/keypair source is selected, keypair commands use that source, and
+`BOUNDED_PRIVATE_KEY` is the higher-precedence CI/automation override.
+
+With no `bounded.json`, projectless control-plane commands that take `--app-id`
+also default to the saved web session. They do not discover or create the global
+key implicitly. Set `BOUNDED_PRIVATE_KEY`, or choose a wallet source in a
+project, only when wallet mode is intentional.
+
+**How a new project picks its source.** `openapps init` defaults to the web
+account, reuses or refreshes its saved session, and opens browser login when
+needed. An explicit `BOUNDED_PRIVATE_KEY` or repo-local `.bounded/credentials`
+remains an intentional advanced override. An existing global key never silently
+captures a new project. Select global, project, profile, or env signing first
+with `openapps account use ...` only when that is deliberately required.
+
+For one project under another account, run `openapps account use client-a`; the
+next auth command creates/uses `~/.bounded/accounts/client-a/credentials`. For a
+repo-local isolated key, run `openapps account use --project`; the key lives at
+`<project>/.bounded/credentials` and is gitignored. For a web account, run
+`openapps login`. It opens hosted email/social sign-in and selects `web` in an
+existing current project. The public config and marker always record *which*
+source was used (§4).
+
+**`openapps account use ...` EDITS `bounded.json`.** The account source lives in
+the committed project config, so switching is a working-tree change other agents
+and reviewers will see. Commit it if the project should move, revert it if the
+switch was only for one command — or run the one command from a throwaway dir
+(§3b) and leave the shared config untouched.
+
+**Browser and terminal login.** `openapps login` opens the hosted sign-in page,
+uses a temporary loopback callback with PKCE, then closes the callback server
+after saving the session. It sends no reusable CLI secret to the browser.
+For a headless terminal, `openapps login --email you@example.com`
+sends a 6-digit code to that inbox and waits for it on stdin — run it in an
+interactive terminal, read the code from the inbox, paste it, done. The session
+lands in `~/.bounded/web-session.json` and refreshes itself. There is one web
+session at a time: logging in with a second email replaces the first, so with
+two accounts expect to re-login when you switch (or keep one as the linked
+keypair and one as the web session). Don't script around the prompt with fifos;
+in `--json` mode the CLI refuses to prompt and tells you to run the login
+interactively.
+
+**Naming trap:** `keySource: "global"` (the `~/.bounded/credentials` keypair)
+and `account.profile: "global"` (`~/.bounded/accounts/global/credentials`) are
+DIFFERENT keypairs that both read as "global". `openapps whoami` prints the
+resolved path — trust the path, not the word.
+
+## 3b. Deploy denied? You may be using the wrong identity — try the other one first
+
+A control-plane command that fails with **403 `site_control_denied`** almost never
+means "you can't deploy this." It means **the identity your `bounded.json` account
+source points at is not an owner/admin of that app** — and the CLI uses *only that
+one source*. It does **not** fall back to your other signed-in identities.
+
+**This section is only for `site_control_denied` (an identity problem).** A
+**`boundary_violation`** ("Blocked by this app's boundaries") is a *different* 403:
+an intentional boundary lock that refuses **every** author, including the owner, so
+switching identities can never help. Do **not** cycle credentials against it - stop,
+and follow the boundary-lock playbook
+([access-playbook.md §5](access-playbook.md)) to inspect and amend the boundary.
+
+A **402 `deploy_credit_insufficient`** is neither. It is a billing verdict on an
+identity the platform has *already accepted*: the deploying account's payer ledger
+could not cover the deploy's infra cost. The CLI prints the credits the deploy
+needs against what the account holds. Run `openapps billing status`, add credit with
+`openapps billing topup --credits <n>`, and retry under the **same** identity.
+Cycling accounts cannot mint credit, so never read a 402 as an identity signal.
+
+This is the trap: you can be logged in to two accounts at once — a wallet key at
+`~/.bounded/credentials` **and** a web login at `~/.bounded/web-session.json` — and
+still get a hard 403, because the deploy only tried the one the config selected.
+One of them may own the app while the other does not. **A 403 is a signal to switch
+identity, not a dead end.** Before you conclude "owner-gated, needs someone else,"
+try the identities you already have:
+
+```bash
+# What's signed in locally:
+ls ~/.bounded/credentials ~/.bounded/web-session.json 2>/dev/null
+openapps account --json                 # which source THIS project uses
+# web session identity (if present): the email that owns it
+python3 -c "import json;d=json.load(open('$HOME/.bounded/web-session.json'));print(d['email'],'exp',d['expiresAt'])"
+```
+
+Then deploy under the other identity. To avoid mutating a **shared/committed**
+`bounded.json` (a co-agent may read it mid-window), deploy from a throwaway dir
+whose config selects the other source — the app is unchanged, only *your* local
+auth differs:
+
+```bash
+mkdir -p /tmp/deploy-as-web && cd /tmp/deploy-as-web
+cat > bounded.json <<JSON
+{ "appId": "<TARGET_APP_ID>", "environment": "production", "account": { "keySource": "web" } }
+JSON
+openapps site deploy /abs/path/to/dist      # uses ~/.bounded/web-session.json (the web login)
+```
+
+Or, for a project you own, just switch in place: `openapps account use --web` (web
+login) or `openapps account use --global` (wallet), then re-deploy. If the web
+session is expired, `openapps login --email you@example.com` first.
+
+**Rule of thumb: for a `site_control_denied` error, never report a deploy as
+"owner-gated / blocked" until you've tried every identity signed in on the
+machine.** Wallet-owns-it and web-owns-it are both common; the CLI picks one, so the
+fix is usually just switching sources. (This does **not** apply to a
+`boundary_violation`: a boundary lock refuses every identity, so cycling accounts is
+pointless - amend the boundary via the access playbook instead. Nor to a
+`402 deploy_credit_insufficient`, which is billing: add credit, then retry.)
+
+## 4. Public project markers — `bounded.json` and `.bounded/app.json`
+
+`openapps init` writes public `bounded.json`; `openapps deploy --create` records the
+app id there and also writes legacy-compatible `.bounded/app.json`. Both are
+**PUBLIC** — they record the app, env, owner identity, and account source, but
+**never the private key, web token, or refresh token**. Commit them: they tell
+teammates and agents which app/account this folder maps to.
+
+`bounded.json` is the first file agents should read:
+
+```json
+{
+  "$schema": "https://bounded.sh/schemas/bounded.schema.json",
+  "appId": "6a37ecc89def2f10f13aa922",
+  "name": "my-app",
+  "environment": "production",
+  "protocol": "realtime_offchain",
+  "policy": "policy.json",
+  "account": {
+    "keySource": "profile",
+    "profile": "client-a"
+  }
+}
+```
+
+Web-account projects record only a public login hint:
+
+```json
+{
+  "account": {
+    "keySource": "web",
+    "loginHint": "you@example.com"
+  }
+}
+```
+
+`.bounded/app.json` records the public owner identity and resolved account source:
+
+```json
+{
+  "appId": "6a37ecc89def2f10f13aa922",
+  "name": "my-app",
+  "env": "production",
+  "protocol": "realtime_offchain",
+  "owner": "GFdiGThC8DJ5oMdDYj1xgyQJjWkje6EbzH2jdUMcuWBt",
+  "ownerKeySource": "global (~/.bounded/credentials)",
+  "linkedAccount": "you@example.com",
+  "createdAt": "2026-06-21T18:00:00Z"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `owner` | the public owner identity recorded at create time: a wallet address in wallet/keypair mode, or an OpenApps Auth user id in web mode |
+| `ownerKeySource` | the account source — `global (~/.bounded/credentials)`, `project (.bounded/credentials)`, `profile "<name>" (~/.bounded/accounts/<name>/credentials)`, `env (BOUNDED_PRIVATE_KEY)`, or `web (OpenApps Auth)`. Never a key or token. |
+| `linkedAccount` | the linked or logged-in account hint when known, blank if none: an email for an email-approved link or web login, the approving **wallet address** for a wallet-approved link |
+
+`account.keySource` / `ownerKeySource` answer "which account source does this app
+use?" without ever embedding a secret. If it says `global`, the key is in
+`~/.bounded/credentials` on the machine that created the app. If it says `web`,
+the active session is `~/.bounded/web-session.json`.
+
+## 5. The managed `.gitignore` block
+
+`openapps deploy --create` / `openapps init` appends an idempotent managed block to
+your project `.gitignore` (only if absent). It ignores everything that could carry a
+raw secret and **keeps the public marker committable**:
+
+```gitignore
+# OpenApps (managed) — never commit private keys or secrets.
+# Public markers bounded.json and .bounded/app.json ARE safe to commit; everything below is not.
+.bounded/credentials
+.bounded/*.key
+*.key
+*.keypair.json
+.env
+.env.*
+!.env.example
+```
+
+- `bounded.json` and `.bounded/app.json` (the public markers) are **deliberately
+  NOT ignored** — commit them.
+- A project key, any dropped keypair file, and a `.env` holding `BOUNDED_PRIVATE_KEY`
+  are all ignored so you can't accidentally commit a secret. The web-session file
+  lives in `~/.bounded/web-session.json`; do not copy it into a repo.
+- `!.env.example` keeps a checked-in example env file allowed.
+
+## 6. `openapps link` — wallet-mode anti-loss
+
+The canonical identity is your **web account's user id** — wallet keys are
+detachable signing credentials, and email is a verified contact/login method.
+`openapps login` is a plain web login and does **not** link any local key.
+`openapps link` explicitly attaches the active **local wallet key** to a **remote
+OpenApps account** via an OAuth-style **device flow** (device code +
+fingerprint approval at the dashboard **/link** page (the CLI prints the exact URL) — agents should print that URL for
+their user).
+On the approval page the human signs in with email/social **or a Solana wallet**;
+a wallet approval keys the linked account by that wallet address (no email on
+file until they later sign in with email once).
+The current headless approval method is email OTP: run
+`openapps link --email you@example.com`; the CLI emails an OTP, reads the code
+from stdin, approves the same fingerprint-checked device flow, and records the
+linkage locally. Linking is **refused** if it would merge two unlinked accounts
+that both already own projects. On approval:
+
+- Your keypair and your web account become **mutual admin collaborators** on each
+  other's apps.
+- Your apps become **reachable and administrable from the web account** — so if the
+  local key is lost, you can still get to them.
+- The link is one explicit wallet-key <-> web-account pair. One local key can be
+  linked to one remote account, and that email/wallet combo is the durable
+  association.
+- You can then run **`openapps account transfer-to-web`** (`--yes` to confirm) to
+  make the web account the **owner-of-record**, so the key is fully detachable.
+  Linking is not required for the transfer itself: after `openapps login`, the CLI
+  proves possession of the local key automatically, so `transfer-to-web` also works
+  when a link is refused (for example when both the key and the web account
+  already own projects). Use `--app <appId>` (repeatable) to move a subset.
+
+This is **the** anti-loss mechanism. Run it on day one, before you have apps worth
+losing.
+
+> **`openapps link` does NOT roll or replace your key.** The keypair keeps signing for
+> everything; linking only **adds** an association (an account it's reachable from).
+> There is no key rotation.
+
+If the project already uses `account.keySource:"web"`, do not run `openapps link`;
+run `openapps login --email ...` (or the current web login method) to refresh the
+web session.
+
+## 7. `openapps share` - add a collaborator before you need one
+
+```bash
+openapps share <wallet|email> --app-id <id> --role developer|admin|viewer|billing
+```
+
+Adds a collaborator to one app (owner-gated):
+
+- **email** - stored as the canonical verified-email subject. It works before or
+  after signup and follows that OpenApps account; no wallet lookup is required.
+  When the person signs in with supported email/social auth, the default
+  Turnkey flow also provisions their `@user.address` wallet facet.
+- **wallet** - added directly as the collaborator subject.
+- `--role` is required. `policy` remains a legacy alias for `developer`.
+- Roles and seat counts are gated by the app owner's plan.
+
+A shared **admin** can act on the app, so they survive wallet-key loss *for that
+app*. Add a backup owner **before** anything goes wrong.
+
+> **There is no key-rotation and no recovery command.** The only ownership move is
+> `openapps account transfer-to-web` (to your own web account, after
+> `openapps login`; no link required). In wallet/keypair mode, the only ways an app survives losing its
+> key are: you **linked** the key (or transferred ownership to the web account),
+> you **shared** the app with another identity, or you **backed up** the key file.
+> All must happen *before* the loss.
+
+## 8. Recovery decision table
+
+| Situation | Can you still reach the app? |
+|---|---|
+| **Web account source** (`openapps account use --web`) | **Yes** — log in again with `openapps login --email ...` if the session expires or is missing. |
+| **Linked wallet key** (`openapps link`) | **Yes** — administrable from your web account. |
+| **Shared admin** (`openapps share … --role admin`) | **Yes** — that identity can act on the app. |
+| **Backed up the wallet key file** | **Yes** — restore the selected credentials file and you're the owner again. |
+| **None of the above + key lost** | **No.** The app is **orphaned.** No server-side master reset exists — ownership is the keypair. |
+
+Choose web mode or link wallet keys early so a local-machine loss is not an app
+loss.
+
+## 9. Agent guidance for an advanced local-key project
+
+When you (an AI agent) operate OpenApps on a human's behalf:
+
+1. **Read `bounded.json` first.** It is the public project source of truth for
+   `appId`, environment, policy path, and account source. If absent, fall back to
+   `.bounded/app.json`.
+2. **If `account.keySource` is `web`, use web auth.** Run
+   `openapps login --email ...` when the session is absent or stale. Do not suggest
+   `openapps link`; there is no local key to link in this mode.
+3. **If `account.keySource` is wallet/keypair (`global`, `project`, `profile`, or
+   `env`), SUGGEST `openapps link` on first `deploy --create`** or share a backup
+   owner. Confirm where the selected key lives.
+4. **Tell the human which account source owns/administers the app**
+   (`bounded.json` `account.keySource` / marker `ownerKeySource`) **and what the
+   public owner identity is** (`owner`). For wallet mode, they need to know which
+   key to back up.
+5. **Never echo, print, or commit secrets.** Rely on public `bounded.json` /
+   `.bounded/app.json` for provenance. Credentials files, `BOUNDED_PRIVATE_KEY`,
+   and `~/.bounded/web-session.json` are secrets — keep them out of logs, chat,
+   and the repo.
+6. **On a new machine, do not silently spawn a second wallet identity.** Reuse the
+   same wallet key, link both wallet keys to one web account, or switch the project
+   to `web` and log in intentionally.
+7. **A daily create-limit error (`project_daily_limit_exceeded`) is not
+   deletion or reuse authorization.**
+   Deleting apps does not free the window, so deletion cannot help.
+   Wait for `resetsAtMs`, or run `openapps apps list --json` to inspect visible
+   apps and `openapps access --app-id <id> --json` to confirm a candidate.
+   Reuse requires an exact app ID, protocol compatibility, and explicit user
+   approval for that target.
+   Never delete or repurpose another app automatically.
+
+## First-time local-key setup (only when explicitly selected)
+
+```bash
+openapps account use --global
+openapps init          # preserves the explicit local-key source
+openapps whoami        # auto-creates selected wallet credentials; note the address
+openapps link          # attach the wallet key to your web account
+# ... back up the selected credentials file somewhere safe
+
+openapps deploy --create --name my-app       # records appId in bounded.json + .bounded/app.json
+git add bounded.json .bounded/app.json .gitignore      # commit PUBLIC markers, not keys
+```
+
+## Returning / new machine (don't spawn an accidental wallet identity)
+
+If the CLI auto-creates a key on a new machine, that's a **brand-new account** — it
+can't see apps created elsewhere. Instead, do one of:
+
+```bash
+# Option A — reuse the same global key (copy it securely from the old machine)
+#   scp old-machine:~/.bounded/credentials ~/.bounded/credentials   # then chmod 600
+chmod 600 ~/.bounded/credentials
+openapps whoami        # confirm the address matches your apps' owner
+
+# Option B — link this machine's key to the same web account
+openapps link          # now both keys are admin-collaborators on your apps
+
+# Option C — CI / one-off: supply the owning key via env (never commit it)
+export BOUNDED_PRIVATE_KEY=<base58-secret>
+openapps whoami        # should show your existing owner address
+
+# Option D — web account source: log in again instead of copying a key
+openapps account use --web
+openapps login --email you@example.com
+openapps whoami        # should show your existing web identity
+```
+
+After A, B, or C, `openapps whoami` should show the wallet owner address that
+matches `owner` in your project's `.bounded/app.json`. After D, it should show the
+same web identity. In all cases it should also show the `bounded.json`
+app/account context for configured projects.
+
+## Related
+
+- [cli-reference.md](cli-reference.md) — `whoami`, `login`, `link`, `share`, `collaborators`, account source
+- [accounts.md](accounts.md) — normal CLI web login and session behavior
+- [auth.md](../../openapps-frontend/docs/auth.md) — authentication for users of the deployed app
+- [admin-and-ownership.md](../../openapps-backend/docs/admin-and-ownership.md) — control plane vs data plane; no owner god-mode
+- [secrets.md](../../openapps-backend/docs/secrets.md) — app-level secret values (Stripe/OpenAI keys), kept out of code

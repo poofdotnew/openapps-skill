@@ -1,0 +1,128 @@
+# Deploy quickstart
+
+Use this path for a new project and for ordinary releases: you author the policy
+and the client, and the CLI ships them.
+
+To have OpenApps' build agent write the app from a prompt instead, and to
+iterate on it with more prompts, see [Prompt-driven builds](cli-reference.md#prompt-driven-builds---create-edit-builds).
+
+## Initialize
+
+```bash
+openapps init
+```
+
+If no valid OpenApps web session exists, the CLI opens hosted browser login and
+returns to the terminal after sign-in. `init` then creates:
+
+- `policy.json`, the governed backend policy
+- `bounded.json`, public project configuration safe to commit, with `"sourcePush": true` so every deploy also syncs the project source (see [source-sync.md](source-sync.md))
+- `.gitignore` entries for local OpenApps credentials
+
+No separate authentication command is required before `openapps init`.
+
+## Deploy
+
+```bash
+openapps deploy --create --name my-app
+```
+
+The deploy validates and compiles the policy and refuses an invalid one before
+anything changes; fix what the message names and run it again. Never retry
+`openapps deploy --create` on an ambiguous outcome, because it can create another
+app; see the incident router in this skill's SKILL.md.
+
+The create deploy records the new `appId` in `bounded.json`. Later policy
+releases use:
+
+```bash
+openapps deploy
+```
+
+If the project generates `policy.json`, run its generator before both commands.
+
+## Publish a web frontend
+
+Build a static output directory, then publish it to the same app:
+
+```bash
+openapps site deploy ./dist
+```
+
+The CLI packages the directory as one deterministic gzip-tar artifact and uploads it directly or through resumable multipart transport when needed.
+It does not sync project source unless `sourcePush` or `--with-source` explicitly requests that separate workflow.
+
+If the upload receipt reports `liveUrlStatus: "not_mapped"` and the app has no mapped slug or active custom domain, claim a unique slug or follow the [custom-domain guide](domains.md).
+Keep an existing mapping unchanged.
+
+```bash
+openapps domains slug <unique-slug> --app-id <id>
+```
+
+Use the nonempty URL in the JSON receipt, or resolve the environment-qualified slug with `openapps domains list --app-id <id> --env <environment> --json`.
+Keep the returned hostname exactly; do not invent an app-id URL or change site privacy to obtain one.
+
+## Develop locally
+
+You do not need to publish to iterate. Run the frontend on a local dev server
+against the deployed backend — data calls work from `http://localhost`
+immediately. Only hosted login checks origins; register your dev origin once
+(owner-run, port-exact, ~30s to take effect):
+
+```bash
+openapps domains origins add http://localhost:5173 --app-id <id>
+```
+
+Details: [develop on localhost](../../openapps-frontend/docs/building-a-webapp.md#develop-on-localhost).
+
+## Confirm the release
+
+```bash
+openapps apps inspect --app-id <id> --json
+```
+
+For release-critical work, confirm the active policy/runtime publication before
+testing. Test one intended user flow and one policy-denied boundary.
+
+## Existing project
+
+Read `bounded.json` first. It identifies the environment, app, policy path, and
+developer account source. Do not create a replacement app merely because the
+current account lacks access; use `openapps whoami`, `openapps access`, and the
+[access playbook](access-playbook.md).
+
+## Multiple app IDs from one project
+
+Use named instances when several app IDs intentionally share policy and frontend build targets:
+
+```json
+{
+  "$schema": "https://bounded.sh/schemas/bounded.schema.json",
+  "defaultInstance": "poofnet",
+  "instances": {
+    "poofnet": {
+      "appId": "existing-app-id",
+      "controlPlane": "production",
+      "policyTarget": "poofnet",
+      "buildTarget": "poofnet"
+    },
+    "poofnet-empty": {
+      "controlPlane": "production",
+      "policyTarget": "poofnet",
+      "buildTarget": "poofnet"
+    }
+  },
+  "policy": "policy.json"
+}
+```
+
+Create and deploy only the empty instance, then publish its frontend:
+
+```bash
+openapps deploy --create --name poofnet-empty --instance poofnet-empty
+openapps site deploy ./dist --instance poofnet-empty
+```
+
+The create command writes the new `appId` only into `instances.poofnet-empty`.
+Use `--instance <name>` or `BOUNDED_INSTANCE`; `defaultInstance` is used when neither is present.
+If several instances exist without a default or explicit selection, the CLI refuses instead of guessing.

@@ -1,0 +1,791 @@
+# Invariants — Declaring the Boundaries
+
+**What's in here / when to read this:** the six boundary invariant types —
+`conserve`, `rollingSum`, `flowBound`, `bound`, `tenantTag`, and `tenantEdge` —
+plus the runtime-maintained `windowSum` aggregate and the rule-vs-invariant
+decision.
+
+Write-gating invariants are **transaction postconditions**. On documented
+offchain mutation surfaces that route through invariant evaluation, they run
+before commit and `set-many` batches remain atomic. Coverage does not extend to
+unsupported type/plane combinations or inherited rows merely because a declaration was
+enabled; onchain coverage is type-specific (see [onchain coverage](#onchain-coverage)).
+The six boundary types (`conserve`, `rollingSum`, `flowBound`, `bound`,
+`tenantTag`, `tenantEdge`) are enforced by the offchain realtime runtime on every
+write they cover. `windowSum` is structurally validated and runtime-maintained:
+it is primarily a readable aggregate, and it still write-gates updates/deletes
+on its event leg to keep that history append-only.
+
+Every invariant accepts an optional `name`, surfaced in the `409` when a write
+violates it. **Name them like error codes:** `spend_cap`, `no_minting`,
+`task_tenancy`.
+
+There are six boundary types: `conserve`, `rollingSum`, `flowBound`, `bound`,
+`tenantTag`, and `tenantEdge`. `windowSum` is declared in the same `invariants`
+array as a seventh declaration type: it primarily maintains a readable aggregate
+rather than enforcing a cap or integrity inequality, while still making its event
+collection append-only.
+
+> **Identity in the rule examples below.** The SDK `user` object is
+> `{ id: string, address: string | null, email: string | null, isAnonymous: boolean }`. `@user.id` is
+> the **universal stable identity** — always present for an authenticated user
+> (for a wallet login it equals the wallet address; for an email/social login it
+> is the account identity) — so the auth-guard, ownership, and membership rules in
+> the examples below use `@user.id` (e.g. `owner == @user.id`,
+> `get(/admins/@user.id)`, `@user.id != null`). `@user.address` is a **real
+> onchain wallet address** (present by default for supported email/social logins
+> too, but null for phone-only sessions, `auth.wallets: false` apps, and the legacy
+> lazy `authMode: "bounded"` path) and is reserved for
+> wallet/onchain semantics; `@user.email` is the verified, lowercased email (null
+> for wallet logins). Inside an `"onchain": true` collection, `@user.id`,
+> `@user.email`, and `@user.isAnonymous` are **forbidden** — only `@user.address` is allowed.
+
+## RULES vs INVARIANTS — the decision
+
+This is the call you make in step 4 of generation. Get it right and the policy
+protects what matters; get it wrong and it's green but hollow.
+
+> **Rules** answer *who may act* and judge **one write in isolation**.
+> **Invariants** answer *what must hold across every transaction*, including
+> writes a rule can't see (the rest of the batch, the history, another document).
+
+| Requirement | Use | Why |
+|---|---|---|
+| "Only the owner can update" | rule | authorization, single write |
+| "Status must be one of three values" | rule | payload validation |
+| "Balance never goes negative" | rule (`@newData.balance >= 0`) | single-write predicate |
+| "The total balance never changes" | invariant (`conserve`) | property of the *batch*, not one write |
+| "An agent spends at most 100/hr" | invariant (`rollingSum`) | no single write can see the history |
+| "A user's withdrawals never exceed their deposits" | invariant (`flowBound`) | cross-collection, cumulative, and partitioned by user |
+| "Show the exact 10-minute volume" | aggregate (`windowSum`) | maintains a readable sliding-window sum; it is not a cap |
+| "A doc always belongs to its tenant" | invariant (`tenantTag`) | binds the tag on supported invariant-evaluated mutation paths |
+| "A reference never crosses tenants" | invariant (`tenantEdge`) | property of cross-document state |
+
+Rule of thumb: **if violating it means an app bug, write a rule. If violating it
+means losing money or leaking a tenant, write an invariant.**
+Declaring rule-shaped conditions as invariants buys nothing and costs flexibility
+— invariants bind supported mutation paths once enabled, so plan migrations and
+inherited-state validation explicitly.
+
+Common base keys are `type`, `field`, optional `name`, and optional `onchain`
+(coverage claim — last section). Metadata is type-specific: in particular,
+`flowBound` and `windowSum` reject `scope` in v1 and must be declared directly on
+their outflow/event collection.
+
+## `conserve` — sums don't change
+
+The total of an `Int`/`UInt` field across the collection is preserved by every
+transaction: transfers can move value, nothing can mint or burn it. A `set-many`
+that debits one document must credit another **in the same batch**.
+
+```json
+{
+  "accounts/$userId": {
+    "fields": { "balance": "Int" },
+    "tier": "durable",
+    "rules": {
+      "read": "@user.id != null",
+      "create": "@user.id != null && $userId == @user.id && @newData.balance == 0",
+      "update": "@user.id != null && @newData.balance >= 0 && ($userId == @user.id || @newData.balance > @data.balance)",
+      "delete": "false"
+    },
+    "invariants": [
+      { "type": "conserve", "name": "no_minting", "field": "balance", "materialization": "direct" }
+    ]
+  }
+}
+```
+
+> **Key on the caller, not a chosen name.** The ledger is keyed on `$userId`, so an
+> account **is** its owner and needs no separate `owner` field. Keying on a
+> caller-chosen `$accountId` (with an `owner` field) is a name-squat: whoever creates
+> `accounts/alice` first owns it, and since ownership is immutable and `delete` is
+> `false`, every credit meant for alice lands in the squatter's row **permanently** -
+> and `conserve` freezes the money there, because
+> conservation holds perfectly. If you want friendly handles, add a separate
+> `handles/$handle -> userId` directory so squatting a handle costs a nickname, not money.
+
+> **Demo vs production reads:** the `read: "@user.id != null"` rule above lets any
+> signed-in user read every account's balance. This example keeps reads permissive
+> so a client-side cross-owner transfer can read the recipient's balance before
+> crediting it. A production ledger should move transfers into a server-side function
+> with elevated read and owner-scope the read rule (`$userId == @user.id`) so
+> users cannot enumerate every balance.
+
+| Key | Required | Meaning |
+|---|---|---|
+| `field` | yes | `Int` or `UInt` field to conserve |
+| `materialization` | no | `direct` (default): sums the write set. `materialized`: keeps a backing aggregate row. `sharded`: spreads the aggregate across fixed shard rows for hot collections. The public authoring contract requires `tier: "durable"` for both non-direct modes; they **fail closed** on missing/corrupt aggregate state. |
+| `scope` | no | Alternate path template to bind |
+| `name` | no | Stable name surfaced on `409` |
+
+**What gets enforced:** the runtime postcondition is "affected after-sum ==
+affected before-sum" over the whole batch — so no batch, of any size, can change the
+total.
+
+**When:** balances, token supply, pooled funds, anything where value must move but
+not appear or vanish.
+
+**Genesis — how value enters (read this before you ship).** `conserve` locks the
+total at *whatever the sum already is the moment the invariant goes live*. The
+invariant has no concept of a privileged mint: a `create` or `set` that raises the
+sum is rejected as minting, even for the app owner, even server-side. So the
+example above — `create: balance == 0` **and** `update: balance >= 0` — is a
+**frozen-at-0** system: every account is born at 0, can never go negative, and
+the sum can never move off 0, so nothing can ever hold value. That schema is a
+*transfer* schema, not a complete one. Pick a genesis model:
+
+- **Seed, then conserve (positive balances — validated).** Two deploys, and the
+  seeding window **must be gated on a mint authority**, not on the caller. The
+  transfer rules above bind the caller's own row (`$userId == @user.id`), so if you
+  deploy them without `conserve`, **any** signed-in user can create the row keyed to
+  them and raise its balance — minting themselves supply that `conserve` then freezes
+  into the total. Instead, deploy first with a mint-authority write rule so only the app's
+  minting identity may write the opening supply — e.g. `create`/`update` gated on
+  `@user.id == @const.MINT_AUTHORITY` — and seed the supply into that identity's **own**
+  `$userId` row (`set accounts/<the MINT_AUTHORITY user id> {balance: 1_000_000}`), then in
+  a **single** redeploy add `conserve` **and** switch to the public transfer rule below.
+  Seed a *real* user id, not a made-up name like `accounts/treasury`: under `accounts/$userId`
+  the post-cutover rule only lets a user debit the row keyed to them (`$userId == @user.id`),
+  so a fabricated key would freeze the whole opening supply permanently. Enabling `conserve` and
+  opening transfers in the *same* transition leaves no window in which a non-authority
+  can mint. (The `conserve` freeze itself is validated e2e: seed a balance pre-conserve,
+  add `conserve`, a balanced `setMany` conserves, a later lone mint → `409`.) The seeding
+  window is authority-only because the **write rule names the mint authority** — the
+  caller-keyed `create`/`update` rules do not restrict it, since they bind every user's
+  own row.
+- **Credit/debt (sum stays 0 — validated).** Drop `>= 0` from the update rule so
+  balances may go negative. Every account starts at 0; a transfer is a balanced
+  `set-many` that debits one and credits another (`[alice: -30, bob: +30]`), and
+  the total stays exactly 0 forever. (Verified: balanced `set-many` → ok; a lone
+  `set bob=80` that would mint → `409`.) Use this for ledgers/IOUs where the net
+  is meant to be zero. Note the `>= 0` rule and the credit/debt model are
+  mutually exclusive — if you keep `>= 0`, a system that starts at 0 can never
+  move.
+- **Onchain-backed.** If the value mirrors an on-chain balance, set
+  `"onchain": true` on the invariant (see the onchain section) so genesis lives
+  on the chain, not in a privileged offchain write.
+
+The takeaway: there is no "admin mint" escape hatch — that is the entire point of
+`conserve`. Decide genesis by *deploy order* (seed before the invariant) or by
+*model* (credit/debt nets to 0), not by trying to write past the invariant.
+
+**Authorizing a transfer — the simple self-only rule blocks cross-owner credits.** A peer
+transfer debits one account and credits *another user's* account in the same batch. But
+`"update": "$userId == @user.id"` only lets you change the account **keyed to you** — so the
+credit leg is rejected `403`, and a real transfer between two different users is
+*impossible*, even though `conserve` is satisfied. (Validated by dogfooding: a Treasury→Alice
+transfer under that rule failed `403`; nothing partial applied.) To allow transfers without
+allowing theft, let you change your own account **OR** let anyone *increase* (credit) any
+account — and never let anyone *decrease* an account that isn't theirs:
+
+```json
+"update": "@user.id != null && @newData.balance >= 0 && ($userId == @user.id || @newData.balance > @data.balance)"
+```
+
+`$userId == @user.id` = you may move your own balance (the debit leg); `@newData.balance
+> @data.balance` = anyone may *credit* (the credit leg); a *decrease* of an account that
+isn't yours matches neither clause, so theft is rejected `403`. `conserve` then forces every
+credit to be matched by a debit in the same `set-many`. Validated end-to-end: cross-owner
+transfer ✅, stealing from another account → `403`, a lone mint → `409`, total supply
+unchanged. (For a ledger/IOU you'd drop `>= 0`; for hold-then-release flows, gate the credit
+clause further.)
+
+## `rollingSum` — caps over time windows
+
+The sum of a `UInt` field over a sliding window of the last `windowSeconds` never
+exceeds `limit`. Capped collections are **window-live append-only event logs**:
+updates are always rejected (`409 invariant_violation`). On offchain collections, a
+policy-authorized delete is accepted only after the row can no longer affect any
+declared window: its trusted platform `_createdAt` must be strictly before
+`max(now - windowSeconds, resetAtMs)`. A row exactly on that boundary, inside the
+window, in the future, or with an invalid timestamp fails closed. Platform
+creation time is the clock.
+
+> **`"update": "false"` / `"delete": "false"` is the correct idiom** for an
+> append-only collection (and for any server-authoritative or immutable
+> collection). A literal `false` rule is an **intentional deny**, not a mistake —
+> it says "no caller may ever take this action." Deploy accepts it. The
+> canonical example below is correct and deployable. The alternative — omitting
+> the rule entirely — also denies (omitted ⇒ deny), but writing `false` explicitly
+> documents the intent.
+
+```json
+{
+  "agents/$agentId/spend/$spendId": {
+    "fields": { "amount": "UInt" },
+    "tier": "durable",
+    "rules": { "read": "@user.id != null", "create": "@user.id != null && ($agentId == @user.id || get(/agentMembers/$agentId/@user.id) != null)", "update": "false", "delete": "false" },
+    "invariants": [
+      { "type": "rollingSum", "name": "per_agent_hourly_cap",
+        "field": "amount", "windowSeconds": 3600, "limit": 100, "scopeVariable": "$agentId" },
+      { "type": "rollingSum", "name": "global_daily_cap",
+        "field": "amount", "windowSeconds": 86400, "limit": 1000 }
+    ]
+  }
+}
+```
+
+> **A cap says nothing about who may add to it, or whether the amount is
+> honest.** `rollingSum` keeps the *sum* within `limit`; it does not restrict
+> *who* appends or trust the client's `amount`. So the `create` rule must bind the
+> spend record to its owner: here you may append only under your own agent
+> (`$agentId == @user.id`) or an agent you are a listed member of
+> (`agentMembers/$agentId/$userId`). Without that bind, any signed-in user could
+> write a large record under a *victim* agent to exhaust its hourly cap (a
+> cross-tenant denial of service) or poison the usage numbers. For anything that
+> meters real cost, derive `amount` server-side in a function (idempotent), never
+> from the client, and gate writes to that trusted service identity.
+
+| Key | Required | Meaning |
+|---|---|---|
+| `field` | yes | `UInt` field that is summed |
+| `windowSeconds` | yes | Positive safe integer window length |
+| `limit` | yes | Nonnegative safe integer cap |
+| `scopeVariable` | no | A `$variable` from the path — partitioned caps below |
+| `name` | no | Stable name surfaced on `409` |
+
+The public authoring contract requires `tier: "durable"` for `rollingSum` and
+rejects `materialization` / `pathVariable` metadata.
+
+**What gets enforced:** the runtime admits only nonnegative appended records
+whose projected window sum stays within `limit`, for every sequence of appends.
+Offchain, removing a record strictly older than the effective window start
+cannot change the live window sum. Onchain caps are epoch-bucketed and
+conservative, and onchain deletes remain forbidden.
+
+### Partitioned caps (`scopeVariable`)
+
+With `"scopeVariable": "$agentId"`, the cap holds **per value** of that variable:
+every agent gets its own 100/hr budget instead of all agents sharing one pool. The
+cap is enforced independently per partition. Use partitioned
+caps for per-agent budgets, per-user quotas, per-tenant rate ceilings; use an
+unpartitioned cap for global ceilings. Both can coexist on the same field (above:
+per-agent hourly + global daily).
+
+### Multi-window caps
+
+Declare several `rollingSum` invariants on the **same field** with different
+`windowSeconds` — each window is tracked and enforced independently. Changing a
+window's length starts that window's tracking fresh. A delete is accepted only
+when the row is expired under **every** matching window; equivalently, it must be
+strictly earlier than the earliest effective start (the longest-live boundary).
+
+### Onchain rolling caps
+
+A `rollingSum` may claim `onchain: "onchainSupported"` only on an onchain
+collection and only with `windowSeconds <= 31536000`; the onchain runtime enforces
+it epoch-bucketed (conservatively — it can over-enforce near the boundary, never
+under-enforce). Onchain capped collections remain fully no-delete; expired-delete
+retention is offchain-only. See [onchain coverage](#onchain-coverage).
+
+Declaring the claim is what turns onchain enforcement ON: a `rollingSum` on an
+onchain collection **without** `onchain: "onchainSupported"` still deploys and
+is enforced by the offchain runtime, but onchain program writes are
+not checked against it. See the omitted-default warning under
+[Onchain coverage](#onchain-coverage).
+
+### Recipe — rate-limit an action with a separate event log
+
+The examples above cap a field that *is* the value being limited (a spend log
+where `amount` is the spend). The other common shape is **rate-limiting a
+different action**: "no more than N messages / requests / moves per window." The
+action you want to limit (a chat message, an API call, a game move) lives in its
+own collection; you cap it by **atomically appending one weight=1 event to a
+dedicated append-only log** in the *same* `setMany` as the real write, and put the
+`rollingSum` on the log.
+
+```json
+{
+  "messages/$messageId": {
+    "fields": { "author": "Address!", "body": "String!", "createdAt": "UInt!" },
+    "tier": "durable",
+    "rules": {
+      "read": "@user.address != null",
+      "create": "@user.address != null && @newData.author == @user.address && get(/users/@user.address/posts/$messageId) == null && getAfter(/users/@user.address/posts/$messageId).weight == 1",
+      "update": "false", "delete": "false"
+    }
+  },
+  "users/$userId/posts/$postId": {
+    "description": "Append-only per-author rate-limit log. Every message appends one weight=1 event here, under the SAME document id, in the SAME atomic setMany.",
+    "fields": { "author": "Address!", "weight": "UInt!" },
+    "tier": "durable",
+    "rules": {
+      "read":   "@user.address != null && $userId == @user.address",
+      "create": "@user.address != null && $userId == @user.address && @newData.author == @user.address && @newData.weight == 1",
+      "update": "false", "delete": "false"
+    },
+    "invariants": [
+      { "type": "rollingSum", "name": "messages_per_hour_cap",
+        "field": "weight", "windowSeconds": 3600, "limit": 50, "scopeVariable": "$userId" }
+    ]
+  }
+}
+```
+
+```ts
+// Client writes BOTH legs in one atomic setMany, under the SAME id - the message
+// and its cap event commit together or not at all. The 51st post in an hour fails
+// the whole batch (409), so the message is never written either.
+await setMany([
+  { path: `messages/${id}`,                    document: { author: user.address, body, createdAt } },
+  { path: `users/${user.address}/posts/${id}`, document: { author: user.address, weight: 1 } },
+]);
+```
+
+Three things make this airtight, and each is a common omission:
+
+1. **Atomic pairing, required by the action's own rule.** Write the action and the
+   cap event in **one `setMany`**, so a rejected cap event (over the limit) rolls
+   back the action too. Atomicity alone is not the enforcement: nothing stops a
+   client from submitting the message leg *by itself*, and `requiresInBatch` cannot
+   close it here, because its companion paths may only use path variables the
+   declaring collection binds and this log is keyed by the caller's identity
+   ([data-plane.md](data-plane.md#require-companion-writes-with-requiresinbatch)).
+   So the message's own `create` rule demands the event, keyed by the caller and
+   sharing the message's id:
+
+   ```json
+   "create": "@user.address != null && @newData.author == @user.address && get(/users/@user.address/posts/$messageId) == null && getAfter(/users/@user.address/posts/$messageId).weight == 1"
+   ```
+
+   `getAfter()` reads the staged post-batch state, so it sees the companion row
+   exactly when the caller included it - drop that leg and the message is denied.
+   **Keep the `get(...) == null` in front of it.** A row that already existed
+   satisfies `getAfter` just as well, so without the absence check a caller can
+   append cheap event rows in one window, let them age out of it, and then spend
+   them on messages in a later window whose cap is never charged. Requiring the row
+   to be absent before the batch forces every message to append a fresh event that
+   counts now. (Offchain, `@user.id` keys this exactly as well as `@user.address`.)
+2. **Pin the weight in the create rule** (`@newData.weight == 1`). Without this a
+   client can append `weight: 0` (or omit it) and **the cap never increments** —
+   the limit is silently bypassed. The rule, not the client, fixes the per-event
+   cost. (Use a small fixed set, e.g. `@newData.weight == 1 || @newData.weight == 5`,
+   if different actions cost different amounts.)
+3. **Append-only + scoped path.** `update`/`delete` are `"false"` so the history
+   can't be rewritten, and `$userId == @user.address` (or `$userId == @user.id`)
+   means a caller can only append under their own partition — the same
+   `scopeVariable` the cap partitions on. A caller can't dilute someone else's
+   budget or inflate their own by writing under another partition.
+
+This is the pattern behind the scaffolder's chat template and any "N per window
+per user" limit. Cap the field that *is* the value (the spend-log shape above)
+only when the action's magnitude is itself the thing being limited.
+
+## `windowSum` — an exact sliding-window aggregate you can READ and SORT BY
+
+Where `rollingSum` *caps* a windowed sum at write time, `windowSum` *maintains* one
+as a readable field: declare it on an **append-only event collection** and the
+runtime maintains `target.targetField` from exact per-event contributions — adding
+each event's value atomically on create and subtracting it through a durable,
+alarm-driven expiry queue (no cron or user sweeper). The result is a plain numeric
+field: readable, subscribable, and **sortable**. On the default SQLite document
+backend, ranked pushdown auto-indexes the sort and becomes an O(k) forward scan
+after index creation; Postgres-primary currently uses the in-memory working-set
+query path, so do not promise O(k) there. This is the primitive behind trending
+feeds and leaderboards ([trending-feeds.md](trending-feeds.md)).
+
+```json
+{
+  "trades/$marketId/ev/$id": {
+    "fields": { "size": "UInt!" },
+    "tier": "durable",
+    "rules": { "read": "true", "create": "@user.id != null", "update": "false", "delete": "false" },
+    "invariants": [{
+      "type": "windowSum",
+      "name": "vol10m",
+      "field": "size",
+      "windowSeconds": 600,
+      "target": "markets/$marketId",
+      "targetField": "vol10m"
+    }]
+  },
+  "markets/$marketId": {
+    "fields": { "vol10m": "UInt?" },
+    "rules": { "read": "true", "create": "@user.id != null && @newData.vol10m == null", "update": "false", "delete": "false" }
+  }
+}
+```
+
+Semantics and constraints (validated at deploy):
+
+1. **Exact contribution accounting, not approximate bucketing.** Every increment
+   enqueues one exact decrement at `createdAt + windowSeconds`; Σ decrements == Σ
+   increments per event. The target is exact as of the last successful expiry
+   drain. During alarm latency it can conservatively retain contributions that
+   are already due, so it is not a strict wall-clock oracle or a cap. There is no
+   EWMA drift or bucket coarseness.
+2. **The event collection becomes append-only** (like `rollingSum`): an update or
+   delete would falsify the maintained sum, so both are rejected.
+3. **`field` must be `UInt`; `targetField` must be declared numeric**
+   (`UInt?`/`Int?`) on a target template whose path variables all resolve from the
+   event path. Both collections `durable` tier, non-session, offchain (v1).
+4. **`targetField` is runtime-owned.** Pin it null in the target's user-writable
+   rule branches (`@newData.vol10m == null`) so callers can't seed it; the
+   runtime's own writes bypass rules but still honor declared invariants.
+5. **Missing target**: the first event merge-creates it. Ordinary direct target
+   deletion is blocked while the field is governed. If legacy/corrupt state is
+   nevertheless missing the target at expiry, maintenance drains the queued
+   work without resurrecting the document.
+6. A declared `windowSum` is validated structurally at deploy and maintained by
+   the runtime — it is an aggregate, not a write-gating cap.
+7. **A declaration is fixed while contributions are live.** Once a maintained
+   target has active contributions, changing OR removing that `windowSum`
+   declaration is refused at runtime config activation ("windowSum declarations
+   cannot change while maintained target contributions are active"). This is
+   NOT visible at deploy: whether contributions are active is runtime state, so
+   the change fails when the config activates. Plan the window and field before the first
+   contribution lands. To retire one, drain or expire its contributions first;
+   to retire the *data* it ranks, prefer a status flag over deleting the target
+   document, since a governed target cannot be deleted directly either.
+
+Choose `rollingSum` when you need to **enforce** "no more than X per window";
+choose `windowSum` when you need to **read/rank by** "how much in the last
+window." They compose: the same event log can carry both.
+
+## `flowBound` — per-partition "outflow never exceeds inflow" across two collections
+
+`flowBound` gates a cumulative flow independently for every value of a path
+variable. For each partition `p`, the offchain runtime enforces:
+
+```text
+sum(outflow.field where scopeVariable = p)
+  <= sum(inflow.field where scopeVariable = p)
+```
+
+The canonical shape is an escrow where each user's releases can never exceed
+that same user's deposits. Declare the invariant on the **outflow collection**
+(the leg being gated), and point its `inflow` object at the other collection:
+
+```json
+{
+  "vault/$user/deposits/$depositId": {
+    "fields": { "amount": "UInt" },
+    "tier": "durable",
+    "rules": {
+      "read": "@user.id != null && $user == @user.id",
+      "create": "@user.id != null && $user == @user.id",
+      "update": "false",
+      "delete": "false"
+    }
+  },
+  "vault/$user/releases/$releaseId": {
+    "fields": { "amount": "UInt" },
+    "tier": "durable",
+    "rules": {
+      "read": "@user.id != null && $user == @user.id",
+      "create": "@user.id != null && $user == @user.id",
+      "update": "false",
+      "delete": "false"
+    },
+    "invariants": [
+      {
+        "type": "flowBound",
+        "name": "released_le_deposited",
+        "field": "amount",
+        "scopeVariable": "$user",
+        "inflow": {
+          "collection": "vault/$user/deposits/$depositId",
+          "field": "amount"
+        },
+        "onchain": "offchainOnly"
+      }
+    ]
+  }
+}
+```
+
+| Key | Required | Meaning |
+|---|---|---|
+| `field` | yes | Nonoptional `UInt` field summed on the declaring outflow collection |
+| `scopeVariable` | yes | A `$variable` that appears as a complete path segment in both collection templates; each value gets an independent bound |
+| `inflow.collection` | yes | Existing, distinct durable offchain collection template whose sum supplies the bound |
+| `inflow.field` | yes | Nonoptional `UInt` field summed on the inflow collection |
+| `name` | no | Stable name surfaced on a `409` |
+| `onchain` | no | Omit it or set `offchainOnly`; every other value is rejected for `flowBound` v1 |
+
+Semantics and structural requirements:
+
+1. **Each partition is isolated.** Deposits under `alice` cannot fund releases
+   under `bob`. Every outflow create is checked against all committed inflow and
+   outflow records for its own `scopeVariable` value.
+2. **Both staged legs count atomically.** A deposit and release in the same
+   `setMany` are evaluated together. Deposit 100 + release 100 passes at
+   equality; deposit 100 + release 101 rejects the entire batch.
+3. **Both legs are append-only.** The invariant itself rejects an update or
+   delete of either an inflow or outflow record with `409`, even if a collection
+   rule accidentally allows it. Keep explicit `update: "false"` and
+   `delete: "false"` rules too, so the policy documents the intended API.
+4. **Inflow-only creates validate values, then skip the aggregate scan.** Each
+   staged inflow amount is still checked for append-only shape and a present,
+   nonnegative safe integer. Because a valid inflow create only raises the bound,
+   v1 then returns without summing the committed corpus. Normal auth rules and
+   schema validation still apply.
+5. **Use nonoptional values.** Deploy/config validation accepts only `UInt` (or
+   readonly `UInt!`) and rejects optional `UInt?`/`UInt!?`. Config/runtime
+   backstops reject malformed invariant metadata and any evaluated missing, null,
+   negative, fractional, or unsafe amount.
+6. **Both collections are ordinary durable, non-session, distinct, offchain
+   document collections.** The same `scopeVariable` token must occur in both
+   templates. `flowBound` v1 does not support a `scope` remap, cannot be declared
+   on an onchain collection, and rejects `type: "storage"` on either leg because
+   the file upload/finalize lifecycle is not a document-transaction surface.
+
+### v1 state and scaling limits
+
+- **Activation is not a corpus migration.** Enabling `flowBound` does not scan,
+  validate, or repair existing inflow/outflow rows. Deploy validates policy
+  structure; nothing checks that pre-existing stored state satisfies the
+  inequality or value requirements.
+  Audit and, if needed, repair the inherited corpus before enabling append-only
+  enforcement.
+- **Outflow checks use full committed-corpus scans.** v1 reads both relative
+  collections and filters the affected partitions while summing. Keep each
+  collection corpus deliberately bounded; latency and work grow with corpus size.
+- **Individual safe integers do not guarantee a safe aggregate.** All running
+  sums must remain within `Number.MAX_SAFE_INTEGER`. Inflow-only writes validate
+  individual amounts but skip the aggregate scan, so cumulative inflow can
+  overflow even when every record is valid. A later outflow scan can then reject
+  or fail closed until the corpus is repaired; append-only application writes are
+  not a repair mechanism.
+
+### Read and decline privacy
+
+`flowBound` gates writes; it does not grant or restrict reads. Keep explicit read
+rules on both legs. Also treat write permission as a capacity-observation channel:
+with `errorDisclosure: "full"`, a decline exports numeric `cap`, `current`, and
+`attempted` values to the caller even if that caller cannot read the underlying
+rows. Minimal disclosure removes those numbers, but accept-versus-decline still
+reveals the predicate “would this attempted outflow fit?” to any allowed writer.
+Use narrow create authorization and minimal disclosure when balances or remaining
+capacity are sensitive; redaction cannot remove the accept/decline predicate.
+See [Error disclosure](policy-reference.md#error-disclosure).
+
+> **Current status: runtime-enforced.** Structural validation checks
+> relationship metadata such as the two collection templates, scope variable,
+> field types, tier, and onchain mode, and rejects malformed declarations. The
+> offchain realtime Worker enforces the inequality at write time.
+
+Choose `conserve` when a total must stay constant; `rollingSum` to cap a windowed
+sum; `windowSum` to READ a windowed sum; `flowBound` when one flow must never
+outrun another per user/tenant/market.
+
+## `bound` — hard ceilings / floors on a field (anti-cheat)
+
+A numeric field (or every value of a map field) must always satisfy a fixed
+comparison against a constant `limit`. Enforced on the **standard** write paths
+(direct client write, function `ctx.bounded`, hooks, and the live-runtime
+checkpoint) — so a server-authoritative game's score, a counter, or a level can't be
+stored out of range, no matter what a client (or a buggy tick) proposes.
+
+> **`bound` is enforced offchain for scalars and `.values` maps alike:** every
+> accepted write satisfies `field op limit`, and the runtime checks every map
+> value. An onchain `bound` is not enforced by the onchain
+> runtime and must not be used for an onchain guarantee. In every supported
+> offchain shape, enforcement applies to authoritative durable writes and the live
+> checkpoint; ephemeral per-player views remain read-rule-governed projections.
+
+```json
+{
+  "rooms/$roomId": {
+    "tier": "checkpointed",
+    "rules": { "read": "@user.id != null", "create": "@user.id != null", "update": "false", "delete": "false" },
+    "fields": { "score": "Int" },
+    "session": { "live": { "module": "pong", "everyMs": 33, "maxLifetimeSec": 1800 } },
+    "invariants": [
+      { "type": "bound", "name": "score_ceiling", "field": "score", "op": "<=", "limit": 11 }
+    ]
+  }
+}
+```
+
+| Key | Required | Meaning |
+|---|---|---|
+| `field` | yes | The field to bound. `foo.values` bounds **every value** of a map field `foo` (e.g. a per-player score map). |
+| `op` | yes | One of `<=`, `>=`, `<`, `>`, `==` |
+| `limit` | yes | The constant compared against (use `@const.NAME` to name it) |
+| `name` | no | Stable name surfaced on the `409` |
+
+**What gets enforced:** offchain, any write whose post-state has the
+bounded field (or any value of the bounded map) violating `op limit` is rejected
+(`409` + `name`). At a live checkpoint, the room snapshot is gated before it
+reaches the authoritative store.
+Declare a `bound` on the **authoritative collection** — the room/durable state the
+checkpoint persists — not on a `.../view/$x` subcollection. A per-player view is
+a read-rule-governed projection, not a source of truth, so invariants do not apply
+there by design. See [live-runtime.md](live-runtime.md) and
+[hooks-and-anti-cheat.md](hooks-and-anti-cheat.md).
+
+## `tenantTag` — documents carry their tenant
+
+Binds a `String` field to a path variable: every accepted write to
+`tenants/$tenantId/tasks/$taskId` has `tenant == $tenantId`, always. This is the
+anchor of tenant isolation — once tagged, data cannot be written under one tenant
+while claiming another.
+
+```json
+{ "type": "tenantTag", "name": "task_tenancy", "field": "tenant", "pathVariable": "$tenantId" }
+```
+
+| Key | Required | Meaning |
+|---|---|---|
+| `field` | yes | `String` tag field |
+| `pathVariable` | yes | `$variable` that must exist in the (scoped) path |
+
+**What gets enforced:** an accepted write has the tag field equal to the declared
+path variable — there is no payload that tags a document with the wrong tenant.
+
+`tenantTag` does not accept `materialization` or `scopeVariable`.
+
+> ⚠️ **Isolation needs the READ RULE too — `tenantTag`/`tenantEdge` are write-time
+> *integrity*, not read access.** They keep a doc from being mis-tagged and a reference
+> from crossing tenants. They do **not** govern who can *read*. If your read rule is just
+> `"@user.id != null"`, **every signed-in user can read every tenant** — a cross-tenant
+> read leak — and deploy accepts it (the integrity invariants say nothing about
+> read isolation). Validated by dogfooding: with a permissive read rule,
+> tenant B's user read tenant A's task verbatim. For true "data can't leak between
+> tenants," **gate reads (and member-only writes) on tenant membership**:
+>
+> ```json
+> "read":   "@user.id != null && get(/tenants/$tenantId/members/@user.id) != null",
+> "create": "@user.id != null && get(/tenants/$tenantId/members/@user.id) != null"
+> ```
+>
+> (Keep the `@user.id != null &&` guard so the rule states that it requires a
+> signed-in user.) Membership must **not** be self-service: gate the members `create` rule on a
+> tenant-issued invite (`... && get(/tenants/$tenantId/invites/@user.id) != null`), never
+> on `$memberId == @user.id` alone — that lets anyone join any tenant and read its data.
+> See the `tenantEdge` example below for the invite-gated members + invites collections.
+> So: `tenantTag` + `tenantEdge` = nothing is mis-tagged or cross-linked; the membership
+> read rule = nobody reads another tenant. You need **both**.
+
+## `tenantEdge` — references stay inside the tenant
+
+Protects a reference field: the document it points at must live in `targetScope`
+and carry the **same tenant tag** as the source. References are exact document
+paths, or bare ids resolved via `targetPathVariable`.
+
+```json
+{
+  "tenants/$tenantId/tasks/$taskId": {
+    "fields": { "tenant": "String", "assigneeRef": "String", "title": "String" },
+    "rules": {
+      "read":   "@user.id != null && get(/tenants/$tenantId/members/@user.id) != null",
+      "create": "@user.id != null && get(/tenants/$tenantId/members/@user.id) != null",
+      "update": "false", "delete": "false"
+    },
+    "invariants": [
+      { "type": "tenantTag", "field": "tenant", "pathVariable": "$tenantId" },
+      { "type": "tenantEdge", "name": "assignee_same_tenant",
+        "field": "tenant", "referenceField": "assigneeRef",
+        "targetScope": "tenants/$tenantId/members/$memberId",
+        "targetField": "tenant", "targetPathVariable": "$memberId" }
+    ]
+  },
+  "tenants/$tenantId/members/$memberId": {
+    "fields": { "tenant": "String" },
+    "rules": {
+      "read":   "@user.id != null && get(/tenants/$tenantId/members/@user.id) != null",
+      "create": "@user.id != null && $memberId == @user.id && get(/tenants/$tenantId/invites/@user.id) != null",
+      "update": "false", "delete": "false"
+    },
+    "invariants": [
+      { "type": "tenantTag", "field": "tenant", "pathVariable": "$tenantId" }
+    ]
+  },
+  "tenants/$tenantId/invites/$inviteeId": {
+    "fields": { "tenant": "String" },
+    "rules": {
+      "read":   "@user.id != null && (get(/tenants/$tenantId/members/@user.id) != null || $inviteeId == @user.id)",
+      "create": "@user.id != null && get(/tenants/$tenantId/members/@user.id) != null",
+      "update": "false", "delete": "false"
+    },
+    "invariants": [
+      { "type": "tenantTag", "field": "tenant", "pathVariable": "$tenantId" }
+    ]
+  }
+}
+```
+
+Reads + member-only writes are gated on tenant membership (so no cross-tenant leak).
+Membership is **not** self-service: a user may only add themselves (`$memberId ==
+@user.id`) **and only if the tenant issued them an invite**
+(`get(/tenants/$tenantId/invites/@user.id) != null`), and invites can only be created
+by an existing member. Without the invite gate, `create: "@user.id != null && $memberId
+== @user.id"` lets **anyone enroll themselves into any tenant** - which then satisfies
+the membership read gate above, so the tenant's data leaks. **Bootstrap:** the tenant's
+first member has no inviter, so seed it when the tenant is created (an owner/admin-scoped
+write), the same way the `@const.FOUNDER` branch bootstraps the flat admin set below;
+after that, existing members invite others. Dogfooded for the leak paths: tenant B's user
+is rejected reading tenant A's task, the wrong-tenant tag is rejected `409`, and a
+cross-tenant reference is rejected `409` - while a member reads their own tenant fine.
+
+| Key | Required | Meaning |
+|---|---|---|
+| `field` | yes | Source tenant tag field (`String`) |
+| `referenceField` | yes | `String` field holding the reference |
+| `targetScope` | yes | Path template of the target — must exist in the policy |
+| `targetField` | yes | Tenant tag field on the target (`String`) — must be `String` in the target's `fields` |
+| `targetPathVariable` | no | For bare-id references: which target path variable the id fills |
+
+**What gets enforced:** an accepted reference write requires that the source and target
+tenant tags match — a task can never reference another tenant's member. **Tag both
+ends:** `tenantEdge` compares tags, so source and target scopes each need their own
+`tenantTag`. (`tenantEdge` with `targetPathVariable` stays offchain-only.)
+
+**Writing the reference (`targetPathVariable` set):** the `referenceField` value is
+a **BARE id**, not a full path. With the example above, write `assigneeRef: "A1"`
+(NOT `"tenants/A/members/A1"`) — a full path errors with *"requires a single target
+path segment"*. The id is resolved INSIDE the source tenant
+(`tenants/<sourceTenantId>/members/A1`), so you structurally cannot point at another
+tenant, and **the target must already exist** or the write is rejected (*"requires
+tenants/A/members/A1 to exist before … can reference it"*). So order writes
+target-first: create the member, then the task that references it.
+
+## Onchain coverage
+
+Invariant declarations can generally state an `"onchain"` coverage claim:
+`"offchainOnly"`, `"onchainUnsupported"`, or `"onchainSupported"`. Type-specific
+restrictions still win. In particular, `flowBound` and `windowSum` v1 are
+**offchain-only**: omit `onchain` or use `"offchainOnly"`; an onchain collection
+or any stronger claim is structurally rejected at deploy.
+
+| Invariant | Offchain (realtime) | Onchain |
+|---|---|---|
+| `conserve` (direct, materialized, sharded) | enforced | enforced |
+| `rollingSum` | enforced (exact window) | enforced (epoch-bucketed, conservative) |
+| `windowSum` | runtime-maintained aggregate | structurally rejected (offchain-only v1) |
+| `tenantTag` | enforced | enforced |
+| `tenantEdge` (full-path) | enforced | enforced |
+| `bound` | enforced (scalars and `.values` maps) | not enforced; do not use for onchain guarantees |
+| `flowBound` | enforced | structurally rejected (offchain-only v1) |
+
+The advanced variants `tenantEdge.targetPathVariable`, `rollingSum.resetAtMs`,
+and cross-scope forms are rejected at deploy if a policy claims onchain support
+for them, and an onchain runtime receiving invariant metadata it does not
+support rejects the write rather than skipping the check.
+
+**Omitting `onchain` is not neutral on an onchain collection.** The omitted
+default is offchain-only enforcement: the invariant still deploys and is
+enforced by the offchain runtime, but onchain program writes are NOT checked
+against it (a devnet probe shipped exactly this mistake). On an `onchain: true`
+collection, declare the claim explicitly every time: `"onchainSupported"` only
+when the invariant is scoped to that same collection and the runtime supports
+the form (`conserve` in all three materializations, `tenantTag`, full-path
+`tenantEdge` without `targetPathVariable`, or `rollingSum` within the window cap
+and without `resetAtMs`), or `"offchainOnly"` to record offchain-only
+enforcement as a deliberate choice.
+
+## When NOT to use an invariant
+
+See the RULES-vs-INVARIANTS table at the top. In short: if the property is about
+*who* may act, or about a single write in isolation, it is a rule, not an
+invariant. Declaring rule-shaped conditions as invariants buys nothing and
+constrains every supported
+invariant-evaluated mutation path once enabled. Validate inherited state and plan
+migrations separately.
+
+## Related
+
+- [policy-generation-guide.md](policy-generation-guide.md) — choosing invariants from a description
+- [data-plane.md](data-plane.md) — how violations surface at runtime (409 + name)

@@ -1,0 +1,290 @@
+# Realtime & Games
+
+OpenApps runs every app on a realtime, policy-enforced runtime, so subscriptions and live
+queries come for free. For multiplayer and games it adds a **server-authoritative
+loop**: rooms with a fixed `tick`, fog-of-war via per-player view collections,
+enforced per-player rate caps, and automatic settlement into durable storage. The
+honest limit on what anti-cheat can enforce is in
+[hooks-and-anti-cheat.md](hooks-and-anti-cheat.md).
+
+> **Two tick runtimes.** This doc covers the **bytecode** `session.tick` model — a
+> `hooks.tick.<name>` reducer expressed in policy plus `settleFrom`/`settleTo`
+> settlement. There is a second, native runtime — `session.live`, where you upload
+> a TypeScript module of three pure functions (`init`/`tick`/`views`) that OpenApps
+> runs in an isolated live runtime. The two are **mutually exclusive** on one
+> session. For real server-authoritative loops (game collisions/scoring, a
+> Figma-style editor's canonical doc + cursors, a live dashboard's reducer — any
+> realtime room with logic in code), use the native runtime:
+> **[live-runtime.md](live-runtime.md)**.
+
+## Subscriptions & live queries
+
+Every collection is live. There are two ways to consume a live feed; **in React,
+reach for the hook first.**
+Neither of them is a timer: a client that re-reads a path on `setInterval` is
+working around the live feed, not using it. See
+[never poll a collection](../../openapps-frontend/docs/sdk-reference.md#never-poll-a-collection).
+
+### React: `useQuery` (recommended — no callback to get wrong)
+
+`useQuery(path, options?)` subscribes for you and returns an **auto-updating
+value** — `{ data, loading, error }`. `data` always holds the **full, current,
+read-rule-filtered** result the server last delivered (an array for a collection,
+the doc or `null` for a single doc) and the component re-renders whenever ANY
+writer changes the set. There is no `onData` callback, so the classic trap of
+"treating the first callback as the final state" cannot happen — a doc another
+client writes a moment later just appears in `data` on the next render. (Same
+shape as Convex's `useQuery`.)
+
+```tsx
+import { useQuery } from "@bounded-sh/client";
+
+function Roster({ roomId }: { roomId: string }) {
+  const { data: peers, loading, error } = useQuery<Presence[]>(
+    `rooms/${roomId}/presence`,
+    { filter: { online: true } },
+  );
+  if (loading) return <Spinner/>;
+  if (error)   return <Error e={error}/>;
+  return <>{peers!.map(p => <Peer key={p._id} p={p}/>)}</>;   // shows EVERYONE, always
+}
+```
+
+Pass `path = null` to skip subscribing until an id is ready. `useQuery` takes the
+same `filter`/`shape`/`sort`/`limit`/`prompt` options as `get`/`subscribe`.
+
+### Imperative: `subscribe`
+
+Outside React (or for non-render side-effects), `subscribe(path, { onData })`
+streams a single document or a filtered collection — delivering the full current
+set on every change (not polls) — and returns an unsubscribe function. `useQuery`
+is a thin wrapper over it.
+
+```ts
+import { subscribe } from "@bounded-sh/client";
+
+const stop = await subscribe(`rooms/${roomId}/view/${user.id}`, {
+  onData: (view) => render(view),   // called on every change
+  onError: (e) => console.error(e),
+});
+// later: await stop();
+```
+
+`subscribe` takes the same structured `filter` and `shape` as `get` — the live
+feed only delivers matching documents (initial snapshot AND deltas), with `shape`
+relationships expanded:
+
+```ts
+const stop = await subscribe("orders", {
+  filter: { status: "open", total: { $gt: 100 } },   // deterministic; same operators as get()
+  shape: { buyer: {} },                               // expand links on each delivered doc
+  onData: (rows) => render(rows),                     // rows is a plain array (see payload shape)
+});
+```
+
+**`onData` payload shape.** The argument passed to `onData` mirrors the *path*,
+not `get`'s paged envelope:
+
+- **Single document** (`subscribe("users/u1", …)`) → the document object, or
+  `null` when it doesn't exist / the read rule denies it.
+- **Collection** (`subscribe("messages", …)`, with or without `filter`/`limit`)
+  → a **plain array** of the matching documents (`[]` when none match). The whole
+  current matching set is re-delivered on each change; `onData` is *not* a
+  per-row delta callback.
+
+> **`onData` fires REPEATEDLY — never treat the first call as the complete/final
+> set** (this is the #1 way a working subscription is misread as broken). The
+> first delivery is the snapshot of what exists *right now*; every later write by
+> **any** writer (another client, `openapps data set`, a function, a tick) fires
+> `onData` again with the new full array. A doc a *different* identity creates a
+> moment after you subscribe arrives in a **later** `onData`, not the first — so a
+> one-shot `if (logged) return` / log-the-first-payload-only guard makes a healthy
+> feed look like it "never delivers peer B". **Render/merge on every call, not
+> once** (or just use `useQuery`, which does this for you). To see what the server
+> actually sent, log on every call:
+> `onData: d => console.log(d.length, d.map(x => x._createdBy))`. (If a row *is*
+> delivered but your UI drops it, the bug is your render/merge — e.g. a staleness
+> gate comparing a **seconds** timestamp to a **millisecond** `Date.now()`, or
+> keying on the wrong id — not the realtime layer.)
+
+> **Differs from `get()` on purpose.** A *paged* `get("messages", { limit })`
+> returns `{ data, nextCursor, status }`. `subscribe("messages", { limit })`
+> delivers the **bare array** to `onData` (there is no `nextCursor` on a live
+> feed — `limit` caps how many docs the feed tracks). Destructure the array
+> directly (`onData: (rows) => …`), **not** `onData: ({ data }) => …` — the
+> latter yields `undefined`.
+
+`SubscribeOptions`: `filter`, `shape`, `limit`, `cursor`, `prompt`, `onData`,
+`onError`. (No `sort` — a live feed is event-ordered, not sorted; sort the array
+client-side, or use `get` for a sorted snapshot.) Read access is enforced per
+delivered document — a player's subscription to `view/$playerId` only ever
+delivers their own view, and a `shape` expansion the caller can't read is omitted.
+
+## Tiers for realtime
+
+| Tier | Use in a game |
+|---|---|
+| `ephemeral` | room state, player views, cursors, transient scores — fast, in-memory, gone on restart |
+| `checkpointed` | state you want mostly-durable but write-hot (presence, large boards) |
+| `durable` | anything an invariant protects, and final results |
+
+A **`rollingSum` per-player rate cap requires `durable`** even in an otherwise
+ephemeral game — so the intent/input collection that carries the cap is durable
+while the rest of the room is ephemeral. This is the one tier subtlety to get
+right.
+
+## Sessions — rooms with a server loop
+
+A `session` block turns a top-level `collection/$var` template into a room with a
+server-driven loop and automatic settlement. It is only valid on an `ephemeral`
+or `checkpointed` top-level template (never `durable`, never onchain).
+
+```json
+"rooms/$roomId": {
+  "tier": "ephemeral",
+  "fields": { "status": "String", "tick": "UInt" },
+  "rules": { "read": "@user.id != null", "create": "@user.id != null", "update": "false", "delete": "false" },
+  "hooks": { "tick": { "advance": "@DocumentPlugin.updateField(\"rooms/system\", \"tick\", \"1\")" } },
+  "session": {
+    "checkpointSeconds": 5,
+    "tick": { "everyMs": 100, "run": "advance", "maxLifetimeSec": 3600 },
+    "settleTo": "results/$roomId",
+    "settleFrom": { "collection": "rooms/$roomId/scores/$playerId", "field": "points", "op": "sum", "as": "total" }
+  }
+}
+```
+
+| `session` key | Meaning | Constraints |
+|---|---|---|
+| `tick.everyMs` | loop period | 20–60000 ms |
+| `tick.run` | the `hooks.tick.<name>` to fire each tick | must be declared |
+| `tick.maxLifetimeSec` | hard cap on room lifetime | 1–86400 s |
+| `checkpointSeconds` | snapshot cadence for state | 1–3600 s |
+| `settleTo` | durable template scores fold into when the room ends | must match exactly one **durable** template outside the room subtree; may only use the room's own `$var` |
+| `settleFrom` | where the settled value comes from | `{ collection (sub-collection of the room), field, op: "sum"\|"last", as? }` |
+| `settleRule` | optional expression gating settlement | non-empty string |
+
+The flow: clients send **intents**; the `tick` hook reads intents and advances
+state; on end, `settleFrom` aggregates a per-player field and `settleTo` writes the
+durable result. State the players see is whatever the tick projects — never what a
+client writes.
+
+> **A live tick can call out to a function.** A native `session.live` tick is
+> pure/egress-disabled, but it can `return { state, call: { fn, args, as } }` to
+> invoke a whitelisted OpenApps function — the result re-enters a later tick as an
+> `@effect` intent. That is how a tick reaches AI NPCs, settlement, and external
+> calls. The optional field is **`as`** (a player id), never `onBehalfOf`; it is
+> a validation hint, not an identity override. The called function still runs
+> under the identity configured for the session or function. The primitive lives in
+> [live-runtime.md](live-runtime.md);
+> NPC/settlement patterns are in [ai-npcs.md](ai-npcs.md).
+
+## Server-authoritative state (no forged ticks)
+
+Game state lives in collections **no external writer can update**:
+
+```json
+"rooms/$roomId": {
+  "rules": { "read": "@user.id != null", "create": "@user.id != null", "update": "false", "delete": "false" }
+}
+```
+
+`update: "false"` and `delete: "false"` mean there is no write path for a forged
+tick — only the privileged `hooks.tick` advances state, and a hook can't break any
+invariant. Clients never write state directly; they write **intents** to a separate
+collection.
+
+## Intents + enforced rate caps
+
+Players write intents; a `rollingSum` with `scopeVariable` enforces a per-player
+ceiling per window. The cap forces the intent collection to `durable`.
+
+```json
+"rooms/$roomId/players/$playerId/intents/$intentId": {
+  "tier": "durable",
+  "fields": { "player": "String", "kind": "String", "weight": "UInt" },
+  "rules": {
+    "read": "false",
+    "create": "@user.id != null && $playerId == @user.id && @newData.player == @user.id && @newData.weight == 1",
+    "update": "false",
+    "delete": "false"
+  },
+  "invariants": [
+    { "type": "rollingSum", "name": "input_rate_cap",
+      "field": "weight", "windowSeconds": 1, "limit": 20, "scopeVariable": "$playerId" }
+  ]
+}
+```
+
+An intent collection is append-only (the cap makes it so): each intent is a fresh
+document, `update`/`delete` rejected, so the input log can't be rewritten. This
+example scopes on `$playerId`, so each player gets an independent 20/sec budget.
+Scope on `$roomId` instead only if you deliberately want a single shared per-room
+ceiling - that lets one player consume the whole budget and starve the rest of
+the room, so keep it as a *separate*, clearly-labeled cap rather than the
+per-player one.
+
+> **Pin the cap weight in the create rule** (`@newData.weight == 1`). The `weight`
+> is client-supplied and the cap works by summing it, so without this pin a
+> modified client can send every intent with `weight: 0`; the running total never
+> reaches 20, the cap never trips, and the player fires unlimited actions (macro /
+> turbo-fire) - the exact cheat this page exists to stop. The rule, not the client,
+> must fix each action's cost. (Use a small fixed set like `@newData.weight == 1 ||
+> @newData.weight == 5` when different inputs legitimately cost different amounts.)
+
+## Fog-of-war via per-player view collections
+
+Hidden information never reaches a client it can't see. The tick projects into
+`view/$playerId` only what that player may see; the read rule ties the view to its
+owner.
+
+```json
+"rooms/$roomId/view/$playerId": {
+  "tier": "ephemeral",
+  "fields": { "visibleJson": "String" },
+  "rules": { "read": "@user.id != null && $playerId == @user.id", "create": "false", "update": "false", "delete": "false" }
+}
+```
+
+Because other players' hands, fogged tiles, and hidden units are never written into
+your `view`, patching the client cannot reveal them — there is nothing to reveal.
+This is the structural cure for maphacks and wallhacks.
+
+## The agar.io example (full)
+
+A blob-eating arena: players send movement intents, the tick resolves collisions
+and growth, each player sees only their neighborhood, inputs are rate-capped, and
+final masses settle to a leaderboard. This is **worked example C** in
+[policy-examples.md](policy-examples.md)
+— `rooms/$roomId` (ephemeral, tick + session), `intents` (durable, rate cap),
+`view/$playerId` (fog-of-war), `scores/$playerId` (settleFrom source), and a
+durable `results/$resultId`. Read it there in full; it validates with zero
+issues, and its `"false"` rules are intentional server-authoritative denies.
+
+## The honest anti-cheat boundary
+
+Server authority + invariants shut down a large class of cheats structurally:
+
+- **State manipulation** (teleport, set score/health) — no write path; `update:
+  "false"` + tick-only advancement.
+- **Maphacks / wallhacks** — fog-of-war views; hidden data never sent.
+- **Macro / turbo-fire** — enforced per-player `rollingSum` rate caps.
+- **Forging what a player did** — append-only, owner-attributed intent log.
+
+What **no backend can cure**: a script firing only *legal* inputs at *human*
+timing but with superhuman accuracy. Every input is individually valid, so nothing
+rejects it; the residual is a statistical/ML detection problem on legal inputs,
+best fed by the tamper-proof input log via `webhooks`. Be explicit with users:
+OpenApps solves the structural part and gives the best substrate for the
+statistical part — it does not "solve cheating." Full treatment:
+[hooks-and-anti-cheat.md](hooks-and-anti-cheat.md).
+
+## Related
+
+- [live-runtime.md](live-runtime.md) — the **native** `session.live` runtime (3 pure fns, no deploy) for any realtime room; the tick `call` primitive lives here
+- [ai-npcs.md](ai-npcs.md) — a tick that `call`s a function = an AI NPC / in-game settlement
+- [policy-examples.md](policy-examples.md) — worked example C, end to end
+- [sdk-reference.md](../../openapps-frontend/docs/sdk-reference.md) — `subscribe` and `SubscribeOptions`
+- [hooks-scheduled-webhooks.md](hooks-scheduled-webhooks.md) — `hooks.tick`, `enforceRules`
+- [hooks-and-anti-cheat.md](hooks-and-anti-cheat.md) — the trust boundary in depth
+- [invariants.md](invariants.md) — `rollingSum` + `scopeVariable` for per-player caps

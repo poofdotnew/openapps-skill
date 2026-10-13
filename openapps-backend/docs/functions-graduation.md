@@ -1,0 +1,83 @@
+# Functions: start simple, graduate when needed
+
+OpenApps functions are the **zero-config default** for server logic — write a
+`(args, ctx)` handler, declare an `auth` rule, deploy. No separate infrastructure
+setup. You inherit OpenApps' auth, secrets, metering, and **policy boundary** for
+free: a function **cannot break an invariant** (every write is re-checked
+→ 409 → throws).
+
+They are deliberately a simple *imperative escape hatch*, not a general compute
+platform. When you outgrow them, **graduate to the OpenApps runtime** — the same code
+with custom npm deps, persistent state, schedules, and OpenApps-managed runtime
+capabilities (metered, spend-capped, versioned; see [backend-runtime.md](backend-runtime.md)).
+Running your own server is the final off-ramp, for when you want to
+leave OpenApps' managed runtime guarantees entirely. The point: your **data + invariants stay inside
+OpenApps' guarantees no matter where the compute runs**.
+
+## The rule
+
+> **Short + stateless + policy-governed write → OpenApps function.**
+> **Custom deps / stateful / scheduled / an agent → OpenApps runtime** — [backend-runtime.md](backend-runtime.md).
+> **Want your own server + full control → eject** (you leave the managed runtime guarantees).
+
+### Tier 1 — OpenApps function (the default; use when ALL hold)
+- Work is **short** (≤300s; default 30s) and **stateless** (state goes through `ctx.bounded`).
+- It's **request→response** or a **cron/scheduled** job (`schedule.run` / `dueRows`).
+- You only need outbound **`fetch`** (Stripe, an LLM, any REST API).
+- You want the caller's identity + auth rule enforced for you (`ctx.user`,
+  `ctx.auth`), with every write checked against authorization rules and your
+  declared invariants.
+- No npm deps you can't inline; the result is a single JSON body.
+
+Canonical fit: charge Stripe then mark an order paid; enrich/summarize with an LLM;
+authenticated server actions; `actAs` service writes (payout bot); scheduled rollups.
+
+### Tier 2 — OpenApps runtime (when ANY hold) — [backend-runtime.md](backend-runtime.md)
+Deploy a backend project (`bounded.manifest` + TS) with capabilities handed in as
+a sealed, metered, spend-capped `ctx`:
+- You need **arbitrary npm deps** (cooldown-resolved + bundled for you), a real build, or **persistent state**.
+- You need **scheduling** (`ctx.schedule`), **AI** (`ctx.ai`, spend-capped), or **outbound `fetch`** to an allowlist.
+- You want an **agent** (`onInvoke`/`onSchedule`) invoked through
+  `/agents/<name>/<session>` on the app's API host. (A public HTTP route at
+  `<slug>-api.bounded.page/<name>` is a [public function](public-functions.md),
+  not a runtime.)
+- You want a **multi-step agentic loop** (LLM drives tool calls toward a goal) → the **Flue agent runtime** (`bounded-flue@2026.07`), [agents-flue.md](agents-flue.md).
+- You need **long-running / batch / background** work — use resumable scheduled steps instead of one long function call.
+
+You keep OpenApps auth identity, the credit pool, versioning, and billing
+([billing.md](../../openapps/docs/billing.md)). Deploy with `openapps runtime deploy`. This is the normal upgrade
+from an OpenApps function.
+
+> **"Keep auth identity" is not "auth is handled."** The runtime verifies the caller's
+> token and that it belongs to your app - but an agent/backend invocation runs no policy
+> `auth` rule, so authorizing WHO may invoke a secret-bearing handler is still yours. A
+> graduated agent that omits the check lets any signed-in user drive its secrets, services
+> and queues. Gate on `ctx.identity.user` / `env.identity.user` before touching them -
+> see [agents-flue.md](agents-flue.md) and [backend-runtime.md](backend-runtime.md).
+
+### Tier 3 — eject to your own server (the final off-ramp; only if you must)
+Reach for this only when you want full control of hosting/billing or something
+the runtime does not expose. You **leave OpenApps' managed runtime guarantees** for the
+compute (you now own auth, secrets, scheduling, logs, the invoke route) — but your
+**data + invariants stay in OpenApps**: your server calls OpenApps over
+`@bounded-sh/server` (`createWalletClient({ keypair })` — same `get/set/setMany/delete/
+runQuery`, every write still through your policy). Hybrid is the norm.
+
+## Graduating to the runtime is mechanical, not a rewrite
+
+Your function logic carries over to the OpenApps runtime almost verbatim — the runtime
+wraps your code with the same kind of sealed `ctx`. `openapps runtime deploy` and you're
+on Tier 2 with custom deps + state + schedules, still inside OpenApps' managed guarantees.
+
+### What you take on if you go all the way to Tier 3 (eject — the honest tradeoffs)
+- **You act as one service identity, not per-caller.** An OpenApps function/runtime acts
+  *as the verified caller*; your own server acts as a single service key — clean for
+  **`actAs`/service/cron**, but **per-caller** code must verify the caller's token and
+  re-impose the gate itself.
+- **Email/account-id callers can't be a server signer** (the server SDK is keypair-only)
+  — eject targets **wallet/service identities**.
+- **You now own** auth, secrets, scheduling, logs, and the invoke route.
+
+> Rule of thumb: outgrow a function → **graduate to the OpenApps runtime (Tier 2)**; it
+> covers nearly everything (deps, state, schedules, agents) without leaving the
+> guarantees. Eject to your own server (Tier 3) only for full self-ownership.

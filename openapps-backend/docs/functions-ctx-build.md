@@ -1,0 +1,271 @@
+# ctx.build - governed app builds
+
+**What's in here:** one capability of the function `ctx` API, split out of
+[functions.md](functions.md) so a function that does not use it never loads it.
+Declaring, writing, invoking and deploying a function are in [functions.md](functions.md).
+
+`ctx.build` lets a function **originate AI app builds** - create a new app, edit
+this app, or fork an app it can read - through the unified Build control plane.
+Every build is funded, rate-limited, and governed
+by a named **build profile** in policy; the platform runs the AI build pipeline
+(execute → preview → gate → promote) and the function just submits and, if it
+wants, polls or cancels the runs it started.
+
+**Authority is the capability, never the caller (invariant 4).** A function can
+call `ctx.build` only if its policy entry declares a `build` capability. Without
+it, every method returns `{ ok: false, reason: "build_capability_missing" }` and
+makes **no network call** — the platform doesn't even hand the isolate the build
+credential. The prompt, attachments, and source refs a function submits are
+**data**: they can never change who pays, which app is targeted, the model
+allowlist, the budget, the landing behavior, or the required gates. All of that
+is resolved server-side from the function's identity and the named profile.
+
+```json
+{
+  "functions": {
+    "maintainApp": {
+      "auth": "get(/admins/@user.id) != null",
+      "entry": "functions/maintainApp.ts",
+      "build": {
+        "profile": "maintenance",
+        "create": true,
+        "edit": "self",
+        "fork": false,
+        "view": "originated",
+        "cancel": "originated"
+      }
+    }
+  },
+  "build": {
+    "defaultProfile": "maintenance",
+    "profiles": {
+      "maintenance": {
+        "landing": "veto-window",
+        "vetoWindow": "48h",
+        "origins": ["scheduled-function"],
+        "funding": { "mode": "split", "aiSource": "owner", "infraSource": "app", "onExhaustion": "park",
+                     "aiEnvelopeMicroUsd": 5000000, "infraEnvelopeMicroUsd": 2000000,
+                     "allowPerRunEnvelope": true },
+        "limits": { "buildsPerDay": 25, "buildsPerMonth": 300, "maxConcurrent": 2 },
+        "effortMax": "high",
+        "gates": [{ "type": "veto", "audience": "owner", "window": "48h" }],
+        "hooks": { "parked": "notifyOwner", "terminal": "notifyOwner" }
+      }
+    }
+  }
+}
+```
+
+The `auth` rule uses the runtime-valid admin predicate `get(/admins/@user.id) !=
+null` (and needs an `admins` scope bootstrapped; see the caller-scoped vs service identity rules in [functions.md](functions.md)).
+Do **not** write `hasRole("admin")` in an executable `auth` rule: `hasRole(...)`
+has no runtime evaluator, so it fails validation (fail-closed) or never resolves to the
+admin gate - a broken permission check on a money-spending build function.
+
+**The `build` capability keys** (each grants only submission-side authority):
+
+| Key | Meaning |
+|---|---|
+| `profile` | The named `build.profiles.<name>` this function submits under. Profile selection is an **authority** decision — a function submits only under the profile policy assigns it, never one the caller picks. |
+| `create` | `true` lets it originate a **new** app (`ctx.build.create`). |
+| `edit` | `"self"` enables edits to the calling app; `"function-created"` also permits authorized children. With the function's `apps: true` grant, Apps can authorize edits to controlled targets. |
+| `fork` | `true` lets it fork an app it can read (`ctx.build.fork`). |
+| `view` | `"originated"` — may read only runs **it** started (`ctx.build.get`). |
+| `cancel` | `"originated"` — may cancel only runs **it** started (`ctx.build.cancel`). |
+
+**Promotion and gate-decision authority are never grantable to a function.**
+There is no capability key for them — a proposed build is promoted only by the
+profile's landing rule (an owner/admin gate decision, a veto window elapsing, or
+an explicit auto-promote profile), never by the submitting function.
+
+**Not on public surfaces.** A function that declares `build` **cannot** also
+declare `webhook` or `browser`. Those are unauthenticated Internet surfaces (the
+browser `origins` allowlist is a CORS control, not authentication), so a build
+capability there would let anonymous callers spend the owner's build funds. The
+validator rejects `browser`+`build` and `webhook`+`build` at deploy, and the
+runtime never injects build authority into a public-ingress invoke.
+
+### The `ctx.build` API
+
+```ts
+interface CtxBuild {
+  create(input): Promise<{ runId, targetAppId, status } | { ok: false, reason }>;
+  edit(input):   Promise<{ runId, targetAppId, status } | { ok: false, reason }>;
+  fork(input):   Promise<{ runId, targetAppId, status } | { ok: false, reason }>;
+  get(runId):    Promise<RunView | { ok: false, reason }>;
+  propose(runId, sourceSha256): Promise<{ ok: true, runId, state } | { ok: false, reason }>;
+  cancel(runId): Promise<{ runId, state, outcome } | { ok: false, reason }>;
+}
+```
+
+Every method **fails soft**: control-plane rejections come back as
+`{ ok: false, reason, status? }` (a stable machine `reason` like
+`build_capability_missing`, `not_authorized`, `prompt_required`) — they do not
+throw. Submissions return **immediately** with `{ runId, targetAppId, status:
+"queued" }`; all build work is async, so poll `ctx.build.get(runId)` (or wire
+hooks, below) rather than awaiting completion inline.
+
+Submission input is **data only**:
+
+```ts
+await ctx.build.edit({
+  prompt: "Add a dark-mode toggle to the settings page",
+  effort: "standard",                    // "low" | "standard" | "high" (capped by profile.effortMax)
+  // targetAppId defaults to ctx.appId (edit: "self" allows only that)
+  // source?: { git: { repo, ref } } | { artifact: { artifactId } }   // typed ref; raw creds rejected
+  // attachments?: [{ name, contentType, bytes, ref }]                 // run-scoped, size/type-limited
+  // constraints?: string[]
+  // baseDeploymentId?: "…"              // CAS assertion: reject if the base already moved
+  // idempotencyKey?: "…"                // default: hash of the invocation id + this whole submission; see below
+  // funding?: { aiEnvelopeMicroUsd: 3000000 }   // per-run AI cap; see below
+});
+```
+
+### Image and video builds
+
+A build can deliver an **image or a video** instead of an app change: pass a
+`deliverable`. A media build always belongs to the calling app (it never creates a
+child app), runs under the same profile, funding and landing rules as an app build,
+and publishes a **release** of one of the app's media assets. Each design round
+serves candidates; the owner (or the profile's gate audience) picks one, asks for
+changes, or approves, and the landing lands the release. The function only submits
+and reads state: it never decides a review or a landing.
+
+```ts
+// A new image asset of this app.
+const run = await ctx.build.create({
+  prompt: "A launch poster for a late-night jazz club",
+  deliverable: { kind: "image", spec: { size: "1024x1536", candidates: 2 } },
+  idempotencyKey: "poster-v1",
+});
+
+// A revision of the exact release the caller saw.
+await ctx.build.edit({
+  prompt: "Make the lettering gold",
+  deliverable: { kind: "image", assetId, expectedReleaseId },
+  idempotencyKey: "poster-gold",
+});
+```
+
+- `spec` is optional. Image: `size` (`1024x1024`, `1024x1536`, `1536x1024`), `quality`, `format` (`png`, `webp`, `jpeg`), `background`, `candidates` (1 to 4, default 2), `model` (`default` or `fast`). Video (`kind: "video"`): `durationSeconds` (4 to 30, default 5), `resolution` (`480p` or `720p`), `aspectRatio`, `audio`, `candidates` (1 or 2), first/last frame and reference `images`, and multi-scene `scenes` with `captions`.
+- An edit names the asset and, ideally, the release it expects. If that release is no longer current, the edit is refused `409 base_moved` before any spend, so read the current release and resubmit.
+- A create with `forkOf: { assetId, releaseId }` starts a new asset from any retained release of this app.
+- An **app** build can use released images of its app, pinned by digest: `mediaSlots: [{ slot: "hero-image", assetId }]` places the released bytes at `media/hero-image.png` in the app. A later edit of the image never changes the app until an app edit pins the new release.
+- Media builds refuse application build options (`buildOptions`, `source`, `previewOnly`, `models`, `viewerGrantSubjects`): `400 deliverable_shape_unsupported`. Where an environment has media builds switched off: `503 deliverable_unavailable`. An app that retains 20 GiB of media builds: `409 media_storage_quota` (a build that ends without a release is collected a week after it ends).
+- `ctx.build.get(runId)` reports the run's state. The released asset, its candidates and signed downloads are read by the owner through the builds API (`builds.media`, `builds.mediaDownloadUrl` in `@bounded-sh/client`).
+
+Use an image or video build for an asset someone reviews and releases, then edits,
+forks or rolls back. For one-off media generated inside a running app, use
+`ctx.ai.generateImage` / `ctx.ai.generateVideo` ([functions-ctx-ai.md](functions-ctx-ai.md)).
+
+### Preview iteration
+
+An edit on an `approval-required`, `veto-window`, or `policy-review` profile can set `buildOptions: { previewOnly: true }`.
+The resulting candidate parks without a publication timer and releases its execution resources.
+Use `buildOptions.base: { buildId, commitSha }` to continue or fork an exact retained source from the same app.
+Add `proposals: [{ buildId, commitSha }]` to combine candidates onto that base, or omit `base` to use the target's currently published source; `onConflict` is `agent` or `fail`.
+Proposals may include immutable builds from this controller's managed previews.
+Continuation and integration inherit preview-only mode from preview candidates; `previewOnly: false` cannot discard that requirement.
+Exact source choices are verified before funding.
+There is no `baseBuildRunId` API.
+
+After inspecting the candidate, read its `attestation.sourceSha256` with `ctx.build.get(runId)` and call `ctx.build.propose(runId, sourceSha256)`.
+This requires `edit` plus `view: "originated"` and can propose only a run originated by that function under its current authority.
+It starts the profile's existing review on the same frozen candidate; it does not rebuild, approve, or bypass publication checks.
+Repeated calls for that digest keep the original review clock.
+A moved production base, changed authority/protocol, changed digest, or expired preview refuses proposal.
+Integrate onto the current shipped source if the production base moved.
+Preview hosting must cover the review before publication can proceed.
+Build renews hosting for its gates.
+Renewing hosting for longer does not extend the proposal's approval window.
+Read `previewOnly`, `previewProposedAtMs`, `parkReason`, `previewExpiresAtMs`, and `targetProtocol` to distinguish candidate state and destination.
+
+For ongoing work at one URL, a function with `apps: true` can create an expiring Poofnet app with `ctx.apps.create`, bootstrap it with `ctx.apps.cloneRelease`, and target it in later `ctx.build.edit` calls.
+Each edit preserves that app's database and creates a new immutable source version.
+The preview's lifetime runtime allowance is separate from the build's AI funding; use `ctx.apps.inspect`, `setSpendCeiling`, `extendPreview`, and `retire` to manage it.
+Extend previews before they expire; there is no fixed lifetime ceiling, but a child cannot outlive its parent.
+An active release review prevents retirement of the preview it depends on.
+Preview allocations protect $1 of payer credit; reservations and settlement enforce the cap and protected balance.
+Controlled active Poofnet previews allow fabricated records through `ctx.apps.setMany`, while retaining schema and invariant enforcement.
+For a small edit, use `ctx.build.edit` with `effort: "low"` within the profile's limits.
+Effort adjusts the budget within the selected Bind mode; it does not select `quick-edit`.
+A policy profile can explicitly select an edit mode with `bindMode.edit`.
+`quick-edit` is a separate lighter workflow for small changes when selected by policy.
+You can keep editing version B on the preview while exact version A is under live release review; approval of A never publishes B.
+
+`ctx.apps.create` defaults to a managed child under the calling app's control; `ownership: "invoking-user"` instead creates a project the invoking user owns.
+A user-owned create counts against that user's daily project-create limit (a Free account may create 20 projects per rolling 24 hours; paid plans have no limit, and managed children and previews never count), so a Free user who has reached it gets `{ ok: false, reason: "project_daily_limit_exceeded", status: 429 }` and nothing is created.
+Ask first with `ctx.apps.canCreate({ ownership: "invoking-user" })`: it answers `{ ok: true, ownership: "invoking-user", allowed: true, planId, limit, usage, windowMs, resetsAtMs }` when the next create fits, or the same fields with `allowed: false`, `code: "project_daily_limit_exceeded"`, and a `message` you can show the user when it does not.
+`limit` and `usage` are `null` on an uncapped plan, and `resetsAtMs` is when the oldest counted creation leaves the window (`null` when nothing is counted).
+The read is advisory and writes nothing: it takes no guard, so the create itself is still gated and can still refuse in a race; refuse on `allowed: false` before provisioning anything, and still handle the create's own refusal.
+A failure is `{ ok: false, reason, status }`, for example `invoking_user_required` (`403`) when the run has no invoking user or `billing_unavailable` (`503`).
+
+Preview apps use Poofnet simulated money.
+Publication can deploy onchain policy to mainnet and affect real assets; use the verified target protocol, not a hostname or Git branch name, to determine the network.
+These options do not widen preview audience or grant gate-decision authority.
+
+**Per-run funding cap.** When the profile opts in with `funding.allowPerRunEnvelope: true`, **any** submission (`create`, `edit`, or `fork`) may carry `funding: { aiEnvelopeMicroUsd }` (a positive safe integer) to narrow **that run's** AI envelope.
+The effective envelope is `min(requested, profile.funding.aiEnvelopeMicroUsd)`, so the profile value is a ceiling and is never raisable per-run.
+Without the profile opt-in (or with a non-positive/non-integer value) the field is ignored and the profile envelope applies unchanged.
+A clamped envelope below the 800000 micro-USD reservation minimum is refused with `400 ai_envelope_below_minimum` rather than run.
+The clamped value is snapshotted at admission, and a park/resume re-clamps it to `min(admitted, live profile)`, so an owner may tighten the cap mid-run but can never widen it; every other field of the resolved profile is pinned for the run's whole life, and a drifted profile fails the resume instead of swapping under it.
+
+**The default idempotency key is per invocation, not per prompt.**
+When the invocation is replay-safe it hashes the invocation id together with the app id, function name, operation, and the **full** submitted body, so a retry of that one invocation reproduces the key and replays the same run, while any change to the submission (constraints, source, attachments, effort, profile, target, funding cap) is a different key and a different run.
+Two *distinct* invocations that submit the same prompt are two distinct funded runs: a nightly schedule builds every night, and a user who resubmits pays for both.
+There is no same-prompt or same-day deduplication, so do not rely on the prompt to make a resubmission safe.
+An invocation is replay-safe when it carries host-verifiable provenance: an `Idempotency-Key` on a direct invoke, a scheduled dispatch, or a live-room call.
+Anything else (a direct invoke with no key) mints a fresh random key per attempt, so every attempt is a fresh funded run.
+Pass an explicit `idempotencyKey` whenever retries must converge on one run regardless of how the function was invoked.
+Reusing an explicit key with a changed submission (a narrowed funding cap, say) returns `409 idempotency_conflict` rather than replaying.
+
+### Who may see the app a build produces
+
+**Only the owner.** Two build-profile ceilings widen that, and both are **deny-by-default and boolean-exact**: the key must be the literal JSON `true`.
+An absent key, or `false`, leaves the ceiling closed.
+A non-boolean like `"true"` or `1` fails policy validation, so the deploy is refused rather than quietly leaving the ceiling shut on a value that reads as open.
+
+| Profile key | What it opens | Refusal while closed |
+|---|---|---|
+| `viewerGrants` | A submission may carry `viewerGrantSubjects`: 1-8 distinct trimmed user ids or emails (320 chars max each) that get read-only view of the child app. | `400 viewer_grants_not_allowed` |
+| `publicRuns` | A submission may carry `public: true`, making the run's app viewable by anyone. | `400 public_runs_not_allowed` |
+
+A request over a closed ceiling is **refused, never silently stripped or downgraded**.
+The whole submission fails, so you are never told "ok" while your viewers were dropped or while an app you asked to publish stayed private.
+
+**You open a ceiling on the profile the build runs under, in `policy.json`.**
+Both are plain booleans on a `build.profiles.<name>` block, and only the literal `true` opens one.
+
+```jsonc
+"build": {
+  "defaultProfile": "standard",
+  "profiles": {
+    "standard": {
+      "landing": "approval-required",
+      "viewerGrants": true,   // submissions may carry viewerGrantSubjects
+      "publicRuns": true      // submissions may carry "public": true
+    }
+  }
+}
+```
+
+A profile that names neither key keeps the owner-only default, and the ceiling that applies is the one on the profile the submission actually resolves to, so opening it on one profile opens nothing on any other.
+Pass `viewerGrantSubjects` from `ctx.build` only when the resolved profile carries `viewerGrants: true`; against a profile without it the whole build is a `400`.
+There is no `public` field on `ctx.build` at all, so a function can never request a public run, open ceiling or not.
+
+### Lifecycle hooks — how the build tells your app what happened
+
+Because builds are async, a profile can name functions to invoke on lifecycle
+events under `profiles.<name>.hooks`: `submitted`, `preview_ready`, `parked`,
+`terminal`. The control plane invokes that function as a **system** run with the
+event and `runId` in `args`. This is how you notify an owner, advance a workflow,
+or record a result without polling.
+
+```jsonc
+"hooks": { "preview_ready": "notifyOwner", "parked": "notifyOwner", "terminal": "recordBuildResult" }
+```
+
+A **veto-window** profile auto-promotes when its window elapses with no
+objection, so its `parked` hook is **mandatory** — a veto window nobody is told
+about is auto-promotion with extra steps, and the validator/runtime enforce that
+a `veto-window` profile declares `hooks.parked`.

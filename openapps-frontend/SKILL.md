@@ -1,0 +1,52 @@
+---
+name: openapps-frontend
+description: >-
+  Wire a web or React Native frontend to OpenApps: the @bounded-sh/client SDK
+  (reads, writes, subscriptions, queries), hosted static frontends, and end-user
+  auth UI (email OTP, OAuth, browser guest/anonymous accounts and upgrade). Use when
+  building the client of an OpenApps app or handling how end users sign in. Part of
+  the OpenApps skill family; server-side rules, functions, and the actor model live
+  in the openapps-backend skill, and deploy/hosting config in openapps-deploy.
+---
+
+# OpenApps frontend
+
+The client side of an OpenApps app: the SDK your web or mobile app calls, how end
+users authenticate, and how the hosted frontend is served. Policy still governs
+every write from the client, so pair this with the **openapps-backend** skill when
+a client action needs a rule or invariant, and **openapps-deploy** for hosting and
+domains. To route across the family, see the root **openapps** skill.
+
+## Reference Router
+
+Read only the row matching the current task or term.
+
+| Task or term | Read |
+|---|---|
+| SDK reads, writes, subscriptions, paging, `queryAggregate`, `count`, filters, sort, cursor, `setMany`, `set(path, null)` | [SDK reference](docs/sdk-reference.md) |
+| Build a web frontend | [web app guide](docs/building-a-webapp.md) |
+| Local dev server (`npm run dev`, Vite, localhost), login popup fails, `redirect_uri origin is not a registered origin`, CORS during local development | [develop on localhost](docs/building-a-webapp.md#develop-on-localhost) |
+| Refresh timer, `setInterval`, polling, "keep it fresh", countdown, stale UI | [SDK reference](docs/sdk-reference.md#never-poll-a-collection) |
+| Build for React Native / mobile | [React Native guide](docs/building-for-react-native.md) |
+| App-user email OTP, OAuth, `openBoundedWidget`, unified login widget, default Turnkey auth | [app auth](docs/app-auth.md) |
+| Bring-your-own wallet login; `walletLogin`, `authMethod:'phantom'`, `supportsWalletSignIn`, unsupported wallet / Wallet Standard | [wallet login](docs/auth.md#solana-wallet-login-bring-your-own) |
+| Wallet login lost on refresh, `getCurrentUser()` null after reload, `bounded_last_auth_method`, session restore method | [wallet login](docs/auth.md#solana-wallet-login-bring-your-own) - "Wallet sessions survive reloads" |
+| Guests, anonymous users, invite links, account upgrade | [anonymous accounts](docs/anonymous-accounts.md) |
+| Link a user's X account, `connect('x')`, `completeConnection`, `getConnections`, verified X handle, `__connections__` | [connected accounts](docs/connected-accounts.md) |
+| Hosted frontend and app URLs | [frontend hosting](docs/frontend-hosting.md) |
+| CLI developer login or `openapps login` | [developer accounts](../openapps-deploy/docs/accounts.md) |
+| Embedded wallet, `auth.wallets`, `@user.address` after email/social login | [embedded wallets](../openapps-onchain/docs/embedded-wallets.md) |
+| `onramp()`, buy SOL/USDC by card, Coinbase Onramp, wallet top-up | [onramp](../openapps-onchain/docs/onramp.md) |
+
+## Rules Of Thumb
+
+- Every client write is governed by policy; a `403` on a write is a rule denial, not a client bug. See the openapps-backend skill for the rule.
+- Denied reads return empty `200` responses, never `403`.
+- **Live by default; never poll.** Every collection is push-based, so a `setInterval` that re-reads a path is a bug, not a tuning choice - use `useQuery` (React) or `subscribe`. Countdowns tick on local clock state, not on a re-read. For the few surfaces that are not live (`runQuery`, `functions.invoke`, third-party), poll deliberately: pause on a hidden tab, scope the timer to the state that needs it, back off, and bound it. See [sdk-reference.md](docs/sdk-reference.md#never-poll-a-collection).
+- Batch reads for lists of computed values with `runQueryMany`; never map `runQuery` over a list. See [sdk-reference.md](docs/sdk-reference.md#batch-your-queries).
+- Put provider API keys in OpenApps secrets (backend), never in frontend code.
+- If `npm audit` reports `uuid` advisory GHSA-w5hq-g745-h8pq through `@solana/web3.js -> jayson`, use the scoped [override recipe](docs/sdk-reference.md#npm-audit-reports-a-moderate-uuid-advisory---here-is-the-fix).
+  It addresses that advisory; run `npm audit --omit=dev` on the installed lockfile and investigate any remaining findings separately.
+- **Keep the auth defaults for most apps.** Do not add `authMode` or `auth.wallets` to "enable wallets": default Turnkey email/social login already carries `@user.address`. Deploy `"auth": { "wallets": true }` only for an EXTERNAL-keypair session (bring-your-own wallet login, a server-SDK keypair client, the CLI keypair data lane). Full rule and the opt-outs: [embedded-wallets.md](../openapps-onchain/docs/embedded-wallets.md#the-recommended-login-for-an-onchain-app).
+- **`@user.id` (the account id) is identity/ownership; `@user.address` is the wallet.** Key ownership, membership, and auth guards on `@user.id` (always present). Reach for `@user.address` only for wallet/onchain semantics - never as the identity key.
+- **Wallet login on a phone needs the Solana Mobile adapter.** A phone browser never injects wallet apps; keep `@solana-mobile/wallet-standard-mobile` installed (`legacy-peer-deps=true` in `.npmrc`) and never pre-check `window.solana` before opening the widget. See [Solana Mobile](docs/auth.md#solana-mobile-seeker--saga).

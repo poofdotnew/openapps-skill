@@ -1,0 +1,355 @@
+# Frontend hosting — publish a static site to a mapped OpenApps host
+
+Ship a built **static** frontend (Vite/CRA/any `dist/`) to OpenApps hosting —
+no separate host, no DNS. Claim a vanity slug and your app gets two mapped
+subdomains on the same SSL:
+
+- **`<slug>.bounded.page`** - your static site, with SPA fallback.
+  Verified content-addressed assets can be cached immutably; HTML and other assets revalidate so a new deployment becomes visible on navigation.
+- **`<slug>-api.bounded.page`** - your app's API host: public functions at
+  `/<functionName>/...` (see [public-functions.md](../../openapps-backend/docs/public-functions.md))
+  and the backend runtime at `/agents/<name>/<session>` (see
+  [backend-runtime.md](../../openapps-backend/docs/backend-runtime.md)), so the
+  frontend calls its own backend at a sibling URL; a public function declared with
+  `cors: "app"` accepts the slug origin with no CORS setup.
+
+## What it CAN and CANNOT host
+
+OpenApps serves your static files **exactly as uploaded — it never executes them**.
+There is no Node/SSR server for your frontend. So:
+
+**✅ Can host** — anything that builds to a static, client-rendered bundle:
+- Vite (React/Vue/Svelte/Solid/vanilla), Create-React-App, plain HTML/CSS/JS.
+- SPAs with client-side routing (extensionless routes fall back to `index.html`).
+- Astro / SvelteKit / Nuxt in **static** mode, and **Next.js static export**
+  (`output: 'export'` → `out/`) — these prerender to plain HTML/JS at build time.
+- Anything where `npm run build` yields a folder of `.html/.js/.css` that runs in
+  the browser.
+
+**❌ Cannot host** — anything that needs a server **at request time**:
+- A normal Next.js app (`next start`): SSR, ISR, React Server Components, API
+  routes, `middleware`, image optimization. Same for Remix, Nuxt/SvelteKit in SSR
+  mode, Express/Fastify, PHP, etc.
+- Server-side secrets or request-time rendering baked into the frontend framework.
+
+**The OpenApps way to get "server" behavior:** ship the UI as a static bundle here,
+and move every server concern to OpenApps — data + rules to your **policy**, secrets
++ server logic + external API calls to a **function** or **backend runtime** at
+`<slug>-api.bounded.page` ([functions.md](../../openapps-backend/docs/functions.md), [backend-runtime.md](../../openapps-backend/docs/backend-runtime.md)).
+If you truly need framework SSR, host that app elsewhere and still use OpenApps as
+its backend. Rule of thumb: **if serving a page would require running your code,
+`openapps site deploy` won't do it — prerender it, or move that code into OpenApps.**
+
+## Deploy
+
+```bash
+openapps site deploy ./dist --app-id <id>
+```
+
+- Uploads every file under the dir (default `./dist`); **must contain `index.html`** at root.
+- **Replace-deploy**: files no longer in the new build are pruned (no stale assets).
+- Auth is your per-app session token (owner/admin only). Any valid static dist is accepted
+  — the files are never executed, only served — subject to caps: 25 MB/file, 100 MB total,
+  5000 files, path-safety.
+- Live in seconds at the app's mapped slug or custom-domain host, e.g.
+  `https://<slug>.bounded.page`.
+- `openapps deploy --create` gives an offchain (Poofnet) app a **public** hosted
+  site and an onchain (devnet, mainnet) app a **private hosted-site gate**;
+  `--public` / `--private` overrides it.
+  An app created implicitly by `openapps site deploy` starts private unless
+  `--public` is passed. The
+  gate is deliberately simple and **web-login only**: a public app is reachable
+  by anyone; a private app is reachable only after signing in with an OpenApps
+  web account that is the owner, a collaborator, or invited (identities linked
+  to that account — e.g. a linked CLI key's apps — resolve server-side), plus
+  OpenApps platform staff, who can open any private site read-only for support
+  and never gain owner or collaborator powers on it. There is no
+  local-key/daemon auto-pass through the gate. Existing apps stay as
+  they were. After creation, flip or inspect the gate with
+  `openapps site privacy private|public|status --app-id <id>`, **or** flip it
+  from the in-app OpenApps widget's always-visible privacy toggle (cloud-backed;
+  no local daemon required).
+  An OpenApps app on sale or Open is the exception: the platform holds it, so a privacy change is refused (`managed_app_mutation_forbidden`).
+  The setting applies to every mapped static host that resolves to the app: vanity slug and active custom domains.
+  API hosts are not gated.
+  The private-site gate page itself tells owners and visitors how to make the app public.
+- **Preview a private site in a browser without making it public:**
+  `openapps site preview --app-id <id>` (add `--open` to launch it). As
+  owner/admin you already pass the gate; this mints a short-lived, shareable
+  one-click link — `https://<host>/__bounded/gate/land?token=…` — that sets the
+  gate cookie and lands on the REAL site, then expires (default 60 min, `--ttl
+  <minutes>`, max 1440) back to the normal sign-in page. Host auto-resolves from
+  the app's mapped slug/custom domain, or pass `--host <host>`.
+  Authorized web accounts and wallet accounts are both supported: the CLI obtains the app-bound identity token needed by the gate.
+  Keep the current authorized account; no wallet switch is required for web login.
+  Treat the link as a bearer secret until it expires - anyone who opens it gets in.
+
+## Repeated-load asset caching
+
+OpenApps supports an opt-in asset namespace for static builds with relative JavaScript imports and CSS resource URLs.
+For Vite, add this tag to the source `index.html` head and use the public-only URL hook below alongside `base: "./"`:
+
+```html
+<meta name="bounded-assets" content="relative-v1">
+```
+
+```ts
+// vite.config.ts - preserve your existing plugins and other options.
+export default defineConfig({
+  base: "./",
+  experimental: {
+    renderBuiltUrl(filename, { type }) {
+      if (type === "public") return `/${filename}`;
+    },
+  },
+  plugins: [react()],
+});
+```
+
+The hook keeps files from Vite's `public/` directory at root URLs, so font preloads, icons, and public images also work on deep SPA routes.
+Those unmounted URLs use ordinary conditional revalidation, including fonts referenced by a copied public stylesheet.
+HTML script and stylesheet entries still participate in OpenApps' rewrite even when their original files came from `public/`.
+Leave bundled assets on Vite's relative fallback; returning a root URL for every asset breaks the shared namespace for lazy CSS preload dependencies.
+
+Deploy the entire built directory with the ordinary `openapps site deploy` command.
+OpenApps rewrites the built HTML's local script, modulepreload, and stylesheet URLs into a directory identified by the complete published file map's SHA256 digest.
+Relative imports and preload links share that directory, so the same module keeps one browser identity.
+Responses in the verified namespace are immutable only after the requested namespace matches the current public publication and the file bytes match its pinned digest.
+Private sites and preview variants remain `private, no-store`.
+HTML always stays current and is never an immutable asset.
+A changed file map gets a new namespace; an old namespace request that reaches the server returns `404`, rather than mixing generations.
+An already-open tab that needs a previously unloaded chunk after a deployment may therefore need a refresh.
+The namespace optimizes repeat visits to one deployment, not reuse of unchanged vendor chunks across deployments.
+
+The opt-in applies to build-time relative imports and CSS references.
+Application-authored root-relative resource strings, API calls, inline scripts, remote URLs, and navigation links retain their existing meaning.
+Do not add only the HTML tag to a build whose module graph still uses absolute paths.
+Vite's ordinary output hash is not a SHA256 prefix, so its filename alone does not qualify for immutable caching.
+Without this opt-in, ordinary assets use conditional revalidation; a successful unchanged GET can return `304` without the body.
+
+## Public proof page (opt-in)
+
+Every hosted app CAN publish a public proof surface: a `/__bounded/boundaries`
+page (the proof stamp, plain-English invariants, and a live count of writes the
+boundaries declined) plus a small "Boundaries" corner badge on the site. It is
+**off by default** — an app carries no OpenApps proof chrome unless the owner
+turns it on:
+
+```bash
+openapps site proof on --app-id <id>     # publish the page + badge
+openapps site proof off --app-id <id>    # remove them
+openapps site proof status --app-id <id>
+```
+
+Also toggleable from the dashboard (the "Public proof page" card). Takes effect
+within about a minute; no policy redeploy needed. Related presentation knob: the
+declined-write card the widget shows end users can be turned off in policy with
+`openApps.widget.declineCard: false` (widget `visibility: "hidden"` suppresses
+it too).
+On a **launched oApp** the widget is the app's trust surface and is forced
+visible: a `visibility: "hidden"` frozen into the pre-launch policy neither
+hides the widget nor suppresses the declined-write card there. The explicit
+`declineCard: false` opt-out stays honored on every face.
+
+## Public source page
+
+`/__bounded/source` is the public browser for an app's synchronized source
+tree and change history. It serves the source revision the platform has synced (source rides the
+deploy). It does not reconstruct source from the hosted `dist` directory or
+read an unsynchronized local checkout.
+
+A visibility gate applies before any source is returned, and a source that is not public gets `404` on every public source route.
+An ordinary app's owner publishes its source.
+An OpenApps app's source is public exactly when the app is public (its Public setting), and every app that opens is public.
+
+On a launched oApp the in-app widget also switches to a dedicated launched face instead of the owner console.
+That face is a compact mirror of the venue's own app overview: the app's identity (name, `Open` or `Owned`, fuel), the sale banner while the public sale is live, the Treasury and Operating burn tiles, the agent's status card, Raise funds, a review strip while a decision is in flight, recent agent activity, the venue's workspace links, the app's Boundaries, and its published source.
+The agent chat is one tap from the status card, and a signed-out visitor's conversation stays on that device.
+Every word and every state comes from the venue's own copy modules and the same anonymous public reads the venue's app page makes, so the widget and the venue cannot disagree about an app.
+A read the platform refuses or cannot serve renders the venue's "Unavailable" wording, never a zero, an empty list, or an invented state.
+Fuel uses the venue's five labels (running, low, conserving, asleep, waking) with one label per reading, the cause carried in the headline rather than the label, and dollars rather than raw credits.
+The launched face renders only in the venue's light Paper register: `openApps.widget.theme`, a dark OS preference, and a partner venue's skin select no dark register there, while `openApps.widget.accent` still applies.
+Venue links are composed server-side from the launch record's venue, never guessed from the serving hostname, and a surface the venue does not publish gets no link.
+Writes are widget-initiated and venue-completed: a deposit, bid, vote, or veto opens the venue's own page as a top-level document, and the widget never performs a venue write from the app's origin.
+Owner-console actions are refused on launched apps with `launched_locked` /
+`oapp_launched` errors, and on an OpenApps app whose sale has started with
+`managed_app_mutation_forbidden` - changes ship only through its agent's releases.
+The refusal covers app settings, both slug routes (claiming a new label and
+releasing the current one), custom domains, `allowedOrigins`, collaborators,
+access requests, the proof-page toggle, widget-report status and deletion,
+UI boundaries, ownership transfer, backend runtime and live deploys, and
+direct AI edits.
+The address and origin routes matter most: a launched app's slug is the
+address its constitution points at, and `allowedOrigins` decides where its
+sign-in tokens may be delivered.
+Ownership is refused on both rails.
+A launched oApp belongs to its venue, so a single-app transfer returns
+`oapp_launched`, and the bulk wallet-to-web-login migration
+(`openapps transfer-apps`) skips launched apps and reports them back to you
+under `skippedLaunched` rather than moving them.
+An interactive deploy is refused even when the uploaded bytes are identical to
+what the app already serves.
+That applies to the site lane and to `openapps/runtime/deploy` and
+`openapps/live/deploy` alike, and it does not depend on the size of the
+changeset - the manifest a deploy carries (entry, dependencies, allowed hosts,
+sandbox) is not part of that diff at all.
+A launched app's declared boundaries are frozen too: they are
+what the app's public trust surface reports as its enforced rules.
+
+If the page says "Source is being prepared," the source is public but the platform has no source manifest to show.
+Inspect the manifest response first:
+
+```bash
+curl -i https://<your app host>/__bounded/source/manifest.json
+```
+
+Its status and error body distinguish a missing synchronized repository from a
+temporary source backend failure. Then enable source push and redeploy:
+
+```bash
+# bounded.json: { "sourcePush": true }   — or one-off:
+openapps site deploy ./dist --with-source
+```
+
+Read the deploy output: `source synced: <sha>` proves the tree landed; a
+source-sync warning means the site deployed but the source did not (a live
+site alone does not prove the source manifest arrived).
+
+For a canonical site deploy with source, also wait for `widget editing base
+ready: ...`. That separate receipt proves the hosted widget can edit the exact
+deployed frontend. If the site upload lands but the receipt fails, the CLI exits
+nonzero and prints safe recovery guidance, including a deployment-pinned retry
+or exact redeploy command when appropriate; do not assume the nonzero exit
+rolled the site back. See
+[Cloud Source Sync](../../openapps-deploy/docs/source-sync.md#canonical-sites-also-establish-the-widget-editing-base).
+
+Download the published tree at `/__bounded/source.zip`.
+The archive also contains the deployed policy at its root.
+It uses the same visibility gate and fails instead of returning a partial archive.
+
+Frontend variants are optional preview branches:
+
+```bash
+openapps site deploy ./dist --app-id <id> --variant var_alice_dashboard --variant-label "Alice dashboard"
+```
+
+Open `https://<slug>.bounded.page/__bounded/preview?variant=var_alice_dashboard`
+to activate that branch for the current browser session. The app then returns to
+the normal URL while the router serves that variant for the session. Owners can
+review, roll back, and merge frontend branches with:
+
+```bash
+openapps site variants --app-id <id>
+openapps site rollback --variant var_alice_dashboard --app-id <id>
+openapps site promote var_alice_dashboard --app-id <id>
+```
+
+Variants are frontend-only. They cannot bypass backend permissions, functions,
+data rules, or invariants.
+
+## Version history and retention
+
+Every successful canonical frontend version is restorable, whether it came
+from `site deploy` or a prompt build/edit promotion - but history is BOUNDED:
+the newest 10 versions are kept automatically, and everything older ages out
+on later deploys or promotions. Pins are ADDITIONAL to the newest 10: pin any
+version you may want to roll back to later, BEFORE it ages out.
+
+```bash
+openapps site versions --app-id <id>          # what is restorable, what is live, what is pinned
+openapps site pin <deployId> --app-id <id>    # keep this version beyond the newest 10 (owner/admin)
+openapps site unpin <deployId> --app-id <id>  # let it age out again
+openapps site rollback <deployId> --app-id <id>
+```
+
+Rules of thumb:
+- The LIVE version and the rollback target are always retained, even after a
+  rollback makes an old version live again.
+- Versions referenced by platform evidence (governed releases, active variant
+  bases) are system-pinned automatically and never age out.
+- When an old prompt-built version ages out, OpenApps keeps only a compact
+  internal completion receipt so a delayed promotion retry cannot reapply it;
+  that receipt is not a restorable frontend version.
+- User pins are bounded by a per-app cap; system pins never count against it.
+- Rolling back to a version that aged out answers `410 site_deploy_expired`:
+  run `openapps site versions` and pick a retained version instead. A `404`
+  means the id never existed for this app.
+
+## Typical flow
+```bash
+npm run build                              # produces ./dist
+openapps site deploy ./dist --app-id <id>   # → https://<slug>.bounded.page after you claim a slug
+# frontend calls a public function at https://<slug>-api.bounded.page/<functionName>/...
+# or the backend runtime at https://<slug>-api.bounded.page/agents/<name>/<session>
+```
+
+For deployed private-site testing, expect normal OpenApps login rather than
+localhost auto-unlock.
+
+That's the product surface: **`openapps deploy` (policy) + `openapps runtime deploy`
+(backend code) + `openapps site deploy` (frontend)** on one app id.
+
+## Per-route social cards (`ogRoutes`) — make shared links unfurl per resource
+
+A static SPA serves the SAME `index.html` for every route, so by default *every*
+shared link (Slack/iMessage/X/Discord/Facebook) unfurls with the one generic Open
+Graph card baked into `index.html`. For an app with shareable user pages (a snapshot
+`/s/:id`, a room `/r/:id`, a profile `/u/:handle`), that's the difference between a
+viral surface and a wall of identical cards.
+
+Declare an **`ogRoutes`** block in your `policy.json` and OpenApps hosting will,
+on every request to a matching path, fetch the target document **as an anonymous reader**
+(so your collection's `read` rule is the authority) and stamp `og:title/description/image`
++ Twitter card tags + `<title>` into the served `<head>` — before any crawler or browser
+sees it. No SSR server, no extra infra.
+
+```jsonc
+{
+  // ... your collections / rules / invariants ...
+  "snapshots/$id": {
+    "fields": { "title": "String!", "caption": "String?", "imageUrl": "String?" },
+    "rules": { "read": "true", /* create/update/delete ... */ }
+  },
+
+  "ogRoutes": [
+    {
+      "path": "/s/:id",            // the client route people share (a real PATH, not a #hash)
+      "collection": "snapshots/:id", // doc path; :params are substituted from the path
+      "title": "$.title",          // field selector into the resolved doc ("$.a.b" for nested)
+      "description": "$.caption",
+      "image": "$.imageUrl",
+      // optional fallbacks if a field is empty (so a half-filled doc still cards):
+      "defaultTitle": "My App",
+      "defaultDescription": "Check this out",
+      "defaultImage": "https://<slug>.bounded.page/og.png"
+    }
+  ]
+}
+```
+
+Then `openapps deploy` as usual — the `ogRoutes` map ships with the policy; no
+extra command is needed.
+
+**Rules & guarantees**
+- **Only public data ever surfaces.** The doc is read with `@user = null`, so a field
+  only appears in a card if your collection's `read` rule authorizes an anonymous read
+  (`"read": "true"`, or a rule that passes for a null user). If the rule denies, the link
+  falls back to the generic `index.html` card — **non-public fields can never leak into meta**.
+  This is the same runtime-enforced anonymous read rule that gates your data;
+  there is no separate "make this public for cards" toggle to get wrong. Do not
+  describe the rule itself as a guarantee of product intent.
+- **Path-based, not hash-based.** Use a real path route (`/s/:id`), not a hash fragment
+  (`/#/s/:id`) — the server never sees the `#fragment`, so hash routes can't be unfurled.
+  If you're on hash routing and want per-link cards, switch the shared route to a path.
+  (Your SPA still works: an extensionless path falls back to `index.html` as before.)
+- **Always-on, fail-open.** Injection runs for crawlers AND humans (one cached read on a
+  matching path; non-matching paths like `/` or assets do zero extra work). Any miss,
+  denied read, or error serves your original `index.html` unchanged — never a broken card.
+- **`og:image`** can point at any public URL — e.g. an OpenApps public file
+  (`/storage/object?...`) or a static asset you shipped in `dist/`.
+
+**Verify a link unfurls (crawler UA):**
+```bash
+curl -A "Twitterbot/1.0" https://<slug>.bounded.page/s/<id> | grep -iE 'og:|twitter:|<title>'
+# → expect per-resource og:title / og:description / og:image + a per-resource <title>
+```

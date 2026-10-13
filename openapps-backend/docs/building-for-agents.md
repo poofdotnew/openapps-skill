@@ -1,0 +1,163 @@
+# Building for Agents
+
+The flow when **an agent owns a backend**: no human auth ceremony, one keypair
+the agent controls, and a local dashboard running beside the CLI for visibility.
+Generate a policy, deploy it, inspect it, then read and write.
+
+This is what OpenApps is built for: an autonomous agent that needs a real,
+rule-enforced backend (a spend ledger, a task store, a multi-tenant data plane)
+without a person clicking through a console.
+
+## Why agents fit OpenApps
+
+- **Zero-ceremony identity.** The keypair *is* the account — no signup, no email
+  verification. First command generates it.
+- **Enforced guardrails.** An agent's spend cap, conservation, or tenant
+  isolation is an enforced invariant, not a prompt instruction it can talk itself
+  out of. A constraint-breaking write is a `409`, full stop.
+- **One actor, one key.** The agent deploys and writes as the same identity; the
+  policy decides what that identity may do.
+
+## The end-to-end flow
+
+```bash
+# 1. Identity — created automatically at ~/.bounded/credentials; isolate it per agent
+export HOME="$AGENT_HOME"                               # per-agent dir → its own ~/.bounded/credentials
+# …or supply the key directly (base58 ed25519), no file needed:
+# export BOUNDED_PRIVATE_KEY="<base58-secret>"
+openapps whoami                                          # prints the agent's address
+
+# 2. Generate a policy from the task description (see the generation guide)
+openapps init                                            # or write policy.json directly
+
+# 3. Deploy it — an invalid policy is refused before anything changes
+openapps deploy ./policy.json --create --name agent-ledger   # creates app, prints <appId>
+
+# 4. Exercise the data plane
+openapps data set --app-id <appId> --path agents/<agent-id>/spend/s1 --data '{"amount":60}'
+openapps data get --app-id <appId> --path agents/<agent-id>/spend
+```
+
+> Run each agent under a **distinct** `HOME` or `BOUNDED_PRIVATE_KEY` so
+> identities don't collide. Never hand an autonomous agent a human's keypair.
+> That per-agent key *owns every app the agent creates* — lose it and the apps
+> are unrecoverable. Link or back it up: [../docs/key-and-account-safety.md](../../openapps-deploy/docs/key-and-account-safety.md).
+
+> **Keypair data commands need a policy opt-in.** A keypair `openapps data`
+> call opens a sign-in-with-Solana session, and the issuer only mints one when
+> the app's deployed policy carries `"auth": { "wallets": true }` — include it
+> in the generated policy for this flow, or the step-4 writes fail with
+> "wallet login is not enabled". A human driving the CLI under a web login
+> (`openapps login`) needs no such block on a CLOUD app: web sessions run the
+> data plane as-is there (see [data-plane.md](data-plane.md)). An OpenApps Local
+> app is keypair-only, so it needs the block either way.
+
+## Designing the policy for an agent
+
+The one step agents (and the humans prompting them) skip is **the
+boundaries**. If the agent spends, model the cap as a `rollingSum`; if it
+moves value, model `conserve`; if it serves multiple tenants, model `tenantTag`.
+A policy that compiles but declares no invariant is *green but unprotected* —
+the agent can then do anything its rules allow. Full method:
+[../docs/policy-generation-guide.md](../docs/policy-generation-guide.md).
+
+```json
+{
+  "spend/$entryId": {
+    "fields": { "amount": "UInt" },
+    "tier": "durable",
+    "rules": {
+      "read": "@user.id != null",
+      "create": "@user.id != null",
+      "update": "false",
+      "delete": "false"
+    },
+    "invariants": [
+      { "type": "rollingSum", "name": "spend_cap", "field": "amount",
+        "windowSeconds": 3600, "limit": 100 }
+    ]
+  }
+}
+```
+
+With this deployed, the agent can write spend entries freely — until the rolling
+hour's sum would exceed 100, at which point the write rejects with
+`409 spend_cap` and nothing commits. The cap is enforced atomically; there is no
+read-check-write race for the agent to lose.
+
+> **Which identity does an agent guard on?** The runtime `user` object is
+> `{ id, address, email }`. `@user.id` is the universal stable identity and is
+> **always** present for an authenticated caller (for a wallet/keypair agent it
+> equals the wallet address; for an email/social login it is the account
+> identity) — guard ownership, membership, and bare auth on `@user.id`, as the
+> example above does. `@user.address` is a *real onchain wallet address*: present
+> for wallet logins and, by default, for supported email/social logins too (an
+> embedded Turnkey wallet is eagerly provisioned on first login), and `null` for a
+> phone-only session, an `auth.wallets: false` app, the legacy lazy
+> `authMode: "bounded"` path, or a wallet-config lookup failure - reach for it in
+> `onchain: true` collections or genuine wallet/transfer semantics (and inside
+> those, `@user.id`/`@user.email` are forbidden). `@user.email` is the verified,
+> lowercased email (null for wallet callers), for email-gating.
+
+## Reading and writing: CLI or SDK
+
+- **CLI** (`openapps data ...`) is the simplest path for a shell-driven agent —
+  every operation is one command, `--json` makes output machine-parseable, and
+  errors come back as JSON too. See [../docs/cli-reference.md](../../openapps-deploy/docs/cli-reference.md).
+- **SDK** (`@bounded-sh/server`) suits an agent already running in Node: one
+  `createWalletClient({ keypair })` gives typed `get` / `set` / `setMany` /
+  `subscribe`-free reads, all signed by the agent's key. See
+  [building-a-backend.md](building-a-backend.md).
+
+Use `set-many` whenever correctness spans writes (a transfer, a guard + gated
+write). One atomic batch is not a TOCTOU race; a sequence of `set`s is.
+
+## Agent loop tips
+
+- **Classify `409 invariant_violation` by its stable decline cause before retrying.**
+  `cap_exceeded` proves only that the cap comparison rejected this attempt.
+  Wait only when trusted state shows the unchanged attempt can fit after existing in-window usage ages out; otherwise reduce or correct the payload.
+  `append_only_update` never becomes valid through waiting.
+  An offchain `append_only_delete` can become valid only after a row with a trusted creation time falls strictly before every effective window; onchain rows and rows without a valid trusted time remain non-deletable.
+  Correct other invariant failures instead of blindly retrying.
+  A distinct `409 mutation_conflict` is an optimistic concurrency retry: HTTP `set`/`set-many`/`delete` already reran one bounded internal attempt, while a realtime WebSocket write can surface its first conflict directly.
+  Its optional stable `conflictKind` is `document_epoch`, `rule_clock`, or `rule_read_authority`; every value means that nothing committed.
+  Reload exact state and retry the idempotent operation, never classify it as a cap hit.
+  `403` means the rule denies the current actor, action, or state: inspect the rule or trace and wait only when the rule is intentionally time-dependent.
+  Denied reads return `200` with empty data. Prove a denied read with a second real session: `get()` inside a policy-test `expect` reads sandbox state with read rules skipped ([policy tests](policy-tests.md)).
+  See [data-plane.md](data-plane.md) for the complete retry contract.
+- **`rollingSum` collections are window-live append-only; `windowSum` event
+  collections are fully append-only.** Write each event with a fresh id and
+  never update it. Keep `delete: "false"` by default. If bounded retention is
+  required for an offchain `rollingSum`, opt into delete authorization only for
+  a deliberate sweeper: the runtime still rejects any row whose trusted
+  creation time is at or after any effective window boundary. `windowSum`
+  rejects deletes even after expiry because its durable decrement queue owns
+  the aggregate lifecycle.
+- **Propose invariants from schema shape.** Money-like fields → cap/conserve
+  candidates; tenant-ish path vars → tenantTag. Let a human arbitrate when one
+  is available.
+
+## Hand the login link to your user
+
+During `openapps link --no-browser` the CLI prints a verification URL of the form
+`https://dashboard.bounded.sh/link?user_code=XXXX` **plus a device fingerprint**. Relay
+**both** to your user and tell them to open the URL and approve only if the
+fingerprint shown in the browser matches the one the CLI printed (anti-phishing
+check).
+
+The same relay applies to **mainnet policy deploys on a web login**. Those need the
+owner wallet's signature, which lives in the browser, so `openapps deploy` prints an
+approval URL plus a fingerprint and then waits (it fails cleanly if nobody approves).
+Relay both, same rule: approve only if the fingerprint on the page matches the one
+the CLI printed. Every deploy asks again - it is not a one-time setup - and devnet
+and offchain deploys never ask at all. See the **openapps-onchain** skill.
+
+## Related
+
+- [../docs/policy-generation-guide.md](../docs/policy-generation-guide.md) — turning the task into an enforced policy
+- [../docs/cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — every `openapps data` command
+- [building-a-backend.md](building-a-backend.md) — the `@bounded-sh/server` path
+- [capabilities-and-limits.md](../../openapps/guides/capabilities-and-limits.md) — what OpenApps does and doesn't do
+- [../docs/auth.md](../../openapps-frontend/docs/auth.md) — CLI/admin auth sources, including wallet/keypair mode
+- [../docs/key-and-account-safety.md](../../openapps-deploy/docs/key-and-account-safety.md) — per-agent wallet isolation; wallet keys own their apps, so link or back them up

@@ -1,0 +1,682 @@
+# App-user authentication
+
+This page is about people signing in to a deployed app. The developer account
+used by `openapps init` and the CLI is separate; see
+[developer accounts](../../openapps-deploy/docs/accounts.md). Do not expose CLI
+sessions or developer credentials to app users.
+
+OpenApps has **two distinct identity systems**. Don't conflate them:
+
+| | Who | What it is | Where it shows up |
+|---|---|---|---|
+| **CLI/admin auth** | you / your agent | normally an OpenApps web account session selected by `openapps init`; local signing is an advanced alternative | owns/administers apps and is documented in the deploy skill |
+| **End-user auth** | your app's users | OpenApps Auth (email OTP + OAuth/social + optional text OTP). **Turnkey-native auth with eager embedded-wallet provisioning is the default**, so supported email/social users carry both `@user.id` and `@user.address` without an `authMode` or `auth.wallets` override. Browser guests use a device keypair; a connected Solana wallet (`walletLogin`) is the bring-your-own companion. | `@user.id` / `@user.address` / `@user.email` / `@user.isAnonymous` in policy rules |
+
+New apps use an embedded wallet specific to that account and app, while existing apps keep their existing shared wallet.
+Use `@bounded-sh/client` 0.0.99 or later; scope comes from authenticated server metadata, not a frontend option.
+Email login and normal signing share a retained OpenApps iframe; blocked frame storage uses its in-memory session and may require a fresh code after reload.
+Social-provider redirects and popups keep their current behavior.
+See [embedded wallets](../../openapps-onchain/docs/embedded-wallets.md#wallets-are-scoped-to-the-app) for balances, guest identity, and recovery after app deletion.
+
+## Developer and server authentication
+
+For CLI login, read [developer accounts](../../openapps-deploy/docs/accounts.md).
+For explicitly requested local keys, linking, profiles, transfer, or recovery, read [key and account safety](../../openapps-deploy/docs/key-and-account-safety.md).
+For control-plane collaboration, read [access playbook](../../openapps-deploy/docs/access-playbook.md); collaborator roles do not bypass data policy.
+For server-side auth, use an explicit `createWalletClient({ keypair })` and its methods; see [server SDK](sdk-reference.md#bounded-shserver---createwalletclient).
+Never expose developer credentials to app users.
+
+## End-user auth — the `user` object
+
+Your app's users authenticate through `@bounded-sh/client`. The canonical human login is
+**Turnkey-native OpenApps Auth**: email OTP and OAuth/social login with eager,
+non-custodial wallet provisioning. Keep the defaults in the majority of apps:
+omit both `authMode` in client initialization and `auth.wallets` in policy.
+After a supported email/social login completes, the user has a stable account
+identity (`@user.id`) and a real wallet (`@user.address`). Add explicit auth
+configuration to opt out (`auth.wallets: false`), to retain the legacy hosted
+login mode, or to opt IN to wallet login.
+
+That last one is a different switch from the provisioning default above.
+**Signing in WITH a wallet or a keypair** - SIWS/SIWE, `BOUNDED_PRIVATE_KEY`,
+CI, an agent seeding a QA session - is OFF unless the policy sets
+`auth: { wallets: true }` (or an enabling object) explicitly, and is otherwise
+refused with `403 wallet_login_disabled`. A valid signature alone mints a real
+session, so an app has to declare that lane rather than inherit it. Browser
+guests and phone-only sessions are separate cases.
+See [embedded-wallets.md](../../openapps-onchain/docs/embedded-wallets.md).
+
+There are **two issuers**: wallet/guest auth (Phantom / anonymous,
+`wallet-auth.bounded.sh`) and **human auth** (email / phone / social,
+`auth.bounded.sh`). Human credentials are entered on the hosted issuer:
+
+- **Hosted** (most secure): `loginWithRedirect({ methods })` or
+  `loginWithPopup({ methods })`. The credential (email code, Google/Apple/GitHub,
+  text) is entered on the OpenApps issuer origin (`auth.bounded.sh`). On **web** no
+  `redirectUri` is needed — it defaults to the current page; only **React Native**
+  must pass one (an https universal link). Works web and React Native (deep links).
+
+App-origin email/text OTP and guest-link helpers are retired and are not exported
+by the published `@bounded-sh/client`. A guest who signs in through hosted auth gets a
+distinct real `@user.id`; transfer guest-owned data explicitly when needed.
+
+> Pick the methods (email / phone / social / wallet / guest) and hosted presentation
+> that fit your app — see
+> [Choosing your login methods & UX](#choosing-your-login-methods--ux) below.
+
+> For a **live game**, the tick's calls have no human — `@user` is the **system
+> principal** (all fields null unless you declare an acting identity). See
+> [principals-and-origins.md](../../openapps-backend/docs/principals-and-origins.md).
+
+### Choosing your login methods & UX
+
+Picking end-user auth is **two independent builder decisions** — make both to fit
+your app's vibe:
+
+1. **Which methods** do users authenticate with? Mix and match: **email**, **phone**
+   (text OTP, when enabled), **social** (Google / Apple / GitHub), browser
+   **wallet** (Phantom / Wallet-Standard), React Native **Privy Expo** with an
+   explicit provider, and zero-friction **guest** (`signInAnonymously()`). Enable
+   only what your app needs.
+2. **Which hosted UX** renders the human credential step?
+   - **Hosted redirect** — `loginWithRedirect({ methods })`. Most
+     secure; the credential never touches your origin. Works web + React Native
+     (web needs no `redirectUri`; RN passes an https universal link).
+   - **Hosted popup** — `loginWithPopup({ methods })`, when the host UI must stay open.
+   - **In-app unified widget** - `openBoundedWidget({ methods })`. A Shadow-DOM
+     login card rendered inside your app: email + social lanes, plus an optional
+     "Continue with wallet" lane (`wallet: true`). The default email lane runs
+     Turnkey-native OTP inline - no second OpenApps OTP and no OIDC redirect for
+     email. Do not pass `authMode: 'turnkey'` in normal app code because it is
+     already the default. An explicit `authMode: 'bounded'` is the legacy hosted
+     BetterAuth path. The app's Turnkey organization must have email OTP configured
+     (application brand + email OTP enabled); that is an issuer-side prerequisite,
+     not a client parameter. `requireEmail: true` in init config makes
+     email mandatory and suppresses the wallet lane. The call resolves with the
+     signed-in `User` and rejects with `Error("cancelled")` when dismissed.
+
+Wallet and guest are unaffected by this choice (they sign locally). Human auth
+always runs through `auth.bounded.sh`; the app owns the button and method selection,
+but not the credential form.
+
+**Hitting an origin error?** Hosted auth rejects an unregistered redirect with
+`redirect_uri origin is not a registered origin for this app`. Fix it by registering
+the app's web origin — claim a vanity slug (`openapps domains slug <name> --app-id <id>`
+→ `<slug>.bounded.page`) or add a custom domain (`openapps domains add <host> --app-id
+<id>`); both wire `allowedOrigins` automatically. `localhost` is **not** allowed
+automatically — a local dev server's origin must be registered too, port-exact:
+`openapps domains origins add http://localhost:5173 --app-id <id>`. See
+[develop on localhost](building-a-webapp.md#develop-on-localhost).
+
+### Login-method matrix — the whole menu
+
+| Method | How you start it | Identity result | `@user.address` | Notes |
+|---|---|---|---|---|
+| **email OTP** | `openBoundedWidget({methods:["email"]})` | account id | **Turnkey wallet by default** | canonical inline Turnkey OTP; address is available when login completes |
+| **social** (Google/Apple/GitHub) | `openBoundedWidget({methods:["google"]})` or hosted redirect/popup | account id | **Turnkey wallet by default** for email-carrying accounts | canonical social login |
+| **text OTP** | `loginWithRedirect({provider:"text"})` or hosted popup | account id | `null` for a phone-only session | opt-in, off by default |
+| **unified widget** (email + social + optional wallet) | `openBoundedWidget({methods:["email","google"], wallet:true})` | account id (the wallet lane yields the user's real wallet) | Turnkey for email/social; connected wallet for wallet lane | in-app Shadow-DOM card; Turnkey email OTP is the default |
+| **guest (browser)** | `signInAnonymously()` | durable device id | device keypair address (guest auth remains offchain-only) | zero-friction; `isAnonymous: true`; policy opt-in `auth.anonymous`; requires WebCrypto Ed25519 + IndexedDB |
+| **WALLET (Solana), bring-your-own** | `init({authMethod:"phantom", walletLogin:true})` → `login()` | **real wallet** | **the wallet** | the companion login for users who already have a wallet — see below |
+| **CLI/admin** | `openapps login` / keypair | web account or keypair | keypair addr | builder identity, not end-user |
+
+### Solana wallet login (bring your own)
+
+> **The companion to the canonical login.** The canonical email/social login
+> gives those users a Turnkey wallet by default; wallet login is for
+> users who **already have** a Solana wallet and want to sign in *with it*. Add it
+> alongside the canonical login by turning it on at `init()` with
+> **`walletLogin: true`** (it's off until you pass the knob — an app that doesn't
+> pass it sees no wallet-login button, and calling wallet login without the knob
+> throws a clear error naming `walletLogin`). The two coexist: a bring-your-own
+> user keeps their real wallet as `@user.address`, and embedded provisioning never
+> overwrites it.
+
+When enabled, wallet login lets a user **connect their own Solana browser wallet**
+and sign in with it. Their **real wallet address becomes `@user.address`** (and
+`@user.id`) everywhere — Sign In With Solana: the SDK fetches a nonce, the wallet
+renders the standard sign-in text for the page that asked (the SDK leaves the domain
+unset, so the wallet stamps the requesting origin's host, and the issuer refuses any
+other domain for that origin), signs it locally, and the session is
+minted by `wallet-auth.bounded.sh`. Connect and sign-in are one wallet step: the SDK
+never connects first, so the wallet shows a single sign-in approval. It rides the
+injected wallet provider — **no heavy wallet SDK, no React dependency, no popup**.
+
+**The wallet must implement the Wallet Standard `solana:signIn` feature.** That is
+what binds the signature to the page, so a phishing page cannot obtain a login
+signature for another site. Phantom, Solflare, Backpack, and the Solana Mobile
+wallet (Mobile Wallet Adapter 2.0 and later) do; a wallet that offers only plain message signing is refused with the message "This wallet cannot sign in to OpenApps apps" instead of being downgraded.
+The OpenApps login widget offers only wallets with callable sign-in support, including its legacy injected-wallet fallback.
+When only unsupported wallets are detected, a wallet-only widget explains that those wallets cannot sign in; it does not claim no wallet was found.
+Support is determined by capabilities exposed to the page, not a wallet's display name.
+Browser guest accounts sign the same text with their device key; the CLI, the server SDK, and React Native keep the legacy challenge because they send no browser Origin.
+
+**Two knobs, not one.** `walletLogin` is the CLIENT opt-in; the issuer additionally refuses to mint an external-wallet session unless the app's policy allows it, so a deployed `"auth": { "wallets": true }` is a prerequisite (without it login fails with "wallet login is not enabled for this app").
+The browser origin matters too: SIWS binds to it, so a non-first-party host (a tunnel, a preview domain) must be registered with `openapps domains origins add https://<host> --app-id <id> --env <env>`.
+
+```jsonc
+// policy.json
+{ "auth": { "wallets": true } }
+```
+
+**Wallet sessions survive reloads.** The SDK records which login method minted
+the active session (the `bounded_last_auth_method` localStorage marker), and
+`init()` restores through that same method, so a wallet session persists across
+refreshes exactly like an email session - including sessions the widget's
+wallet lane minted on apps that never passed `walletLogin` to `init()`.
+A restored session holds the user's address but no live wallet connection; the
+first signing call reconnects (that is `confirmWalletAction`'s `"connect"`).
+
+> Known defect in `@bounded-sh/client` **0.0.72 and earlier**: `init()` always
+> restored as email and then wiped the wallet session on every reload
+> (`getCurrentUser()` came back `null` after a refresh). On those versions,
+> read the marker yourself and pass the method into `init()` explicitly:
+>
+> ```ts
+> const stored = localStorage.getItem("bounded_last_auth_method");
+> const wallet = ["phantom", "wallet", "mobile-wallet-adapter"].includes(stored ?? "");
+> // Never hard-code authMethod: 'phantom' for every load - that wipes email sessions.
+> await init({ appId: "<appId>", walletLogin: true, ...(wallet ? { authMethod: "phantom" } : {}) });
+> ```
+
+```ts
+import { init, login, signMessage, signTransaction, signAndSubmitTransaction } from "@bounded-sh/client";
+
+// Add bring-your-own wallet login alongside the canonical email/social login.
+// `chain` selects OpenApps' keyless Helius RPC for blockhash reads and submission.
+// An optional top-level `rpcUrl` overrides that endpoint for every onchain path.
+await init({
+  appId: "<appId>",
+  authMethod: "phantom",
+  walletLogin: true,
+  chain: "solana_devnet",
+});
+
+// Right next to the login call — connects the injected wallet, signs the SIWS
+// challenge, and mints the session. user.address === the user's real wallet.
+const user = await login();          // throws an actionable error if walletLogin wasn't passed
+console.log(user.address);           // e.g. "H9CAN…jdNCUE" — the REAL wallet, and @user.address in policy
+
+// Full LOCAL signing surface — the wallet's OWN keypair (not a popup):
+await signMessage("hello");                       // base58 ed25519 signature
+await signTransaction(tx);                        // returns the signed tx
+await signAndSubmitTransaction(tx);               // wallet signs, SDK verifies + submits, returns the tx hash
+```
+
+Both transaction calls verify, before handing the transaction back or putting it on the network, that the transaction still MEANS what you passed and that **the account your session was authenticated with actually signed it**.
+The signer half exists because a wallet can move accounts inside the signing call - Solana Mobile re-authorizes there, and ignores the account the request names - so a transaction can come back signed by an identity your session never proved.
+The message half is deliberately not a byte comparison: a wallet may add its own guard instructions (Phantom injects Lighthouse on mainnet), renumber the account table, and retune the compute budget, and all of that is accepted. What it may not do is move the blockhash, change who must sign, alter any instruction you sent other than the compute budget, or add another call to a program your transaction already uses. See [onchain-troubleshooting.md](../../openapps-onchain/docs/onchain-troubleshooting.md#a-wallet-returned-a-different-transaction) for the clause-by-clause meaning.
+One consequence: a wallet that can ONLY sign-and-send cannot be used through `signAndSubmitTransaction`, because it broadcasts before anything can be checked; it refuses and tells you so.
+If you want that wallet's own broadcast anyway, drive it yourself - outside the guarantee, knowingly.
+Doing that means doing by hand everything the SDK was doing for you, in this order; skip a step and it fails on a phone rather than on your desk:
+
+```ts
+import { getAuthProvider } from "@bounded-sh/client";
+const wallet = await (await getAuthProvider()).getNativeMethods();   // the signed-in provider
+
+// 1. CONNECT. A restored session has an address but no live wallet connection,
+//    so a signing call on a cold page fails with "Wallet not connected".
+if (!wallet.isConnected) await wallet.connect();
+// 2. PREPARE, before you enable the button. The adapter's transaction codec is
+//    code-split; loading it inside the call spends the activation the wallet's
+//    intent navigation needs.
+await wallet.prepare?.("signAndSubmitTransaction");
+// 3. Collect a FRESH tap, and do nothing else on it.
+await tapToContinue();
+// 4. Re-read the account: the wallet can move accounts during that tap, and
+//    nothing after this point can refuse.
+if (wallet.publicKey?.toString() !== user.address) throw new Error("wallet switched account");
+// 5. Send. Nobody can check what it signed - that is the trade you are making.
+const { signature } = await wallet.signAndSendTransaction(tx);
+```
+
+Advanced: pass an object instead of `true` to point at a specific wallet or bridge a custom provider - `walletLogin: { getProvider: () => myWalletStandardProvider, network: "solana_mainnet" }`.
+`authMethod: "wallet"` is an alias for `"phantom"`, and so is `"mobile-wallet-adapter"`.
+
+For a custom wallet picker, import `supportsWalletSignIn` from `@bounded-sh/client` and offer a provider only when `supportsWalletSignIn(provider)` returns `true`.
+This synchronous check requires callable `connect` and `signIn` methods; it never connects, prompts, or signs, and it does not guarantee the wallet's chosen account can complete sign-in.
+A Wallet Standard adapter must expose `signIn` only when the underlying `solana:signIn.signIn` method is callable, and enforce the chosen account's capabilities when signing.
+Resolve the user's chosen provider once and pass that exact object through `loginWithWallet({ getProvider: () => selectedProvider })`.
+If an explicit `getProvider` returns `null` or `undefined`, login fails with "The selected Solana wallet is unavailable"; omit the getter when you want default discovery.
+Default discovery prefers the injected wallet, then uses the Wallet Standard registry when nothing is injected.
+An unsupported injected default is refused; the SDK never silently substitutes a different registry wallet, which would also change the identity signing later transactions.
+Use `openBoundedWidget({ wallet: true })` to let the user explicitly choose a compatible wallet.
+
+### Solana Mobile (Seeker / Saga)
+
+On a capable Android browser (https required) the wallet lane also registers Solana Mobile's Mobile Wallet Adapter as a Wallet-Standard wallet, so the phone's own wallet appears in the connect-wallet list alongside Phantom, with the same SIWS login and the same signing surface.
+It stays inside the opt-in lane: an app that never passes `walletLogin` (or a per-call `openBoundedWidget({ wallet: true })`) shows no wallet button, on a phone or anywhere else.
+
+**Install the adapter to use it (0.0.72+).**
+`@solana-mobile/wallet-standard-mobile` is an optional peer of `@bounded-sh/client`: install it yourself, with `legacy-peer-deps=true` in the app's `.npmrc` first (its protocol package names `react-native` as a required peer; without that line npm installs React Native into a web app and `npm ci` refuses a lockfile that leaves it out).
+
+```sh
+npm install @solana-mobile/wallet-standard-mobile
+```
+
+Keep it installed.
+A phone browser never injects wallet apps (Phantom, Solflare, Backpack): without the adapter no wallet appears on Android, a wallet-only app shows a card with nothing to tap, and the console says why (`[OpenApps] Solana Mobile wallet registration failed`).
+Do not pre-check `window.solana` or Wallet Standard yourself before opening the widget: the mobile wallet registers when the widget prepares the lane, so such a check refuses phones that would have worked.
+
+**Building your own wallet button?** Await `ensureWalletLoginReady()` before you enable it (after `init()`).
+It resolves config, loads the wallet-login chunk and registers the mobile wallet; doing that work after the tap puts a network fetch between the gesture and the wallet handoff, which is exactly what costs the activation.
+The built-in widget does this for you.
+
+It REJECTS only when there is no wallet login at all (config or the provider chunk failed) - leave your control disabled in that case.
+A phone wallet that could not be prepared instead resolves as `{ mobileWallet: "failed" }`, because every injected wallet still works; `"not-applicable"` simply means this device has no mobile wallet to offer.
+A failure there stays retryable, so calling again later can succeed - with one exception that never heals on its own.
+When the optional peer above is missing, registration throws `WalletConfigError` naming the package (logged as `[OpenApps] Solana Mobile wallet registration failed:`) and `mobileWallet` is `"failed"` on every call until you install it.
+So read the console once before you treat a `"failed"` as transient and retry forever.
+
+Mind WHICH control you enable on `"failed"`.
+A control that calls `loginWithWallet()` without pinning a wallet can still resolve to the phone wallet, so preparing it after the tap is exactly the failure to avoid: leave that one disabled and retry readiness.
+A control that passes a specific injected wallet's `getProvider` is unaffected and may be enabled.
+
+```ts
+const { mobileWallet } = await ensureWalletLoginReady();
+// Pinned to an injected wallet: safe either way.
+phantomButton.disabled = false;
+// Unpinned - its resolution can fall through to the phone wallet.
+connectAnyWalletButton.disabled = mobileWallet === "failed";
+```
+
+**One thing you must wire yourself: a fresh tap per wallet action.**
+The mobile wallet lives in a separate app, so every operation leaves the page through an Android intent, and Chrome only allows that navigation while the page holds a transient user activation.
+The tap that started an action is already spent by the time the SDK has fetched a nonce or a blockhash, so the SDK awaits `confirmWalletAction` immediately before each wallet call and lets you collect a new one; reject it to abort with nothing signed.
+The login widget supplies this for the login signature itself, so `openBoundedWidget` needs nothing extra - but anything your own UI drives (`signMessage`, `signTransaction`, `signAndSubmitTransaction`, and the `set()` writes that sign onchain) needs the hook.
+It is called with the action it is about to take, and `"connect"` is one of them: a restored session holds the user's address but no live wallet authorization, so signing reconnects first - silently while the wallet still trusts the page.
+When that cached authorization is gone (it expired, or the user cleared it) reconnecting means re-opening the wallet app, which is its own round trip and needs its own tap.
+Your hook is then called twice for one signature, `"connect"` first; in the ordinary case it is called once.
+
+```ts
+await init({
+  appId: "<appId>",
+  authMethod: "phantom",
+  chain: "solana_devnet",
+  // Required for the `set()` writes and signAndSubmitTransaction calls named
+  // above: the SDK submits the signed transaction itself. Top-level, never
+  // nested under walletLogin.
+  rpcUrl: import.meta.env.VITE_SOLANA_RPC_URL,
+  walletLogin: {
+    // Only where the mobile wallet can be active; injected wallets sign
+    // in-page and need no extra tap.
+    confirmWalletAction: /android/i.test(navigator.userAgent) && window.isSecureContext
+      ? (action) => showTapToContinue(action)   // resolve from a real click
+      : undefined,
+  },
+});
+```
+
+Optional tuning goes through `init({ mobileWalletConfig })`: `appIdentity` (name/uri plus an `icon` path resolved relative to `uri`) is what the wallet app displays in its approval sheet, `remoteHostAuthority` (a reflector authority) additionally enables the desktop QR-code "connect your phone" lane, and `cluster` (`"mainnet-beta"` / `"devnet"`) lets a chainless, login-only app say which cluster to authorize on.
+The mobile wallet authorizes per cluster and signs on the app's network, so a `cluster` - or a `walletLogin.network` - that contradicts `chain` throws at init rather than failing later as a wallet rejection.
+
+Two limits worth knowing.
+The wallet is reached over loopback (`http://localhost` and a `ws://localhost:<port>` socket to the wallet app), so an app that declares a `boundaries.browser` block cannot use it: that grammar compiles to https hosts only and has no loopback token.
+And a page can register the mobile wallet for one cluster only - switching the app's Solana network afterwards throws and asks for a reload, because the registration cannot be withdrawn.
+
+> **Wallet login vs the default embedded wallet - don't confuse them.**
+>
+> | | **Wallet login** (`walletLogin: true`) | **Default email/social login** (embedded) |
+> |---|---|---|
+> | Who has the key | the **user** (their Phantom/Wallet-Standard wallet) | the user through a non-custodial **Turnkey wallet** |
+> | How they log in | connect wallet + SIWS | email/social OTP; the wallet is attached to the login |
+> | `@user.address` | their **real** wallet | the embedded smart-wallet address |
+> | Signing surface | full **local** `signMessage` / `signTransaction` / `signAndSubmitTransaction` (no popup) | Turnkey signing with user approval |
+> | Use it when | your users already have wallets / want wallet-native UX | you want email users to get a wallet without ever leaving email login |
+>
+> The two are independent and can coexist. A wallet-login user's `@user.address` is
+> their real wallet and embedded provisioning will **not** overwrite it (the embedded-wallet
+> provisioner only runs for email/social logins that don't already carry a wallet).
+> Turnkey is the sole embedded-wallet implementation and is eagerly provisioned
+> by default.
+> See [embedded-wallets.md](../../openapps-onchain/docs/embedded-wallets.md).
+
+### Hosted login — email, social, and text in one flow
+
+The hosted OAuth2 + PKCE redirect flow covers **email OTP, Google/Apple/GitHub,
+and text** through a single chooser. The token's `appId` is bound to a
+`redirect_uri` registered for your app, so it can only be minted through and
+delivered to your own origin.
+
+> **What users see:** the hosted page and the OTP email say **"Continue to
+> `<your-domain>`"** using the *validated* `redirect_uri` host (e.g.
+> `myapp.bounded.page`), not your app's display name. This is deliberate — a
+> self-chosen name is spoofable (an app could call itself "Google"), the
+> registered domain is not. So make your app reachable on a clear domain.
+
+**Minimal web login (client 0.0.105 and later).**
+Await `init()` on app startup; it completes both redirect and popup returns automatically.
+
+```ts
+import { init, loginWithRedirect, loginWithPopup, onAuthStateChanged } from "@bounded-sh/client";
+
+await init({ appId: "<appId>" });
+onAuthStateChanged((user) => { /* render signed-in UI */ });
+
+// a button → hosted chooser (shows the methods enabled for the app):
+loginWithRedirect({ methods: ["email", "google"] });   // or loginWithPopup({ methods: ["email", "google"] })
+```
+
+On **web** `redirectUri` is **optional** — it defaults to the current page
+(`window.location.origin + pathname`), so the minimal flow needs no dedicated
+callback route. Pass `redirectUri` only when you intentionally want the issuer to
+return to a *different* URL than the one the user logged in from (it must be a
+registered origin). On **React Native** `redirectUri` is **required** (an https
+universal link) — see [building-for-react-native.md](building-for-react-native.md).
+
+```ts
+// Jump straight to one provider from your own button:
+loginWithRedirect({ provider: "google" });   // "apple" / "github" when configured; "text" only when text OTP is enabled
+
+// Or expose only the choices you want for this service:
+loginWithRedirect({ methods: ["email", "google", "apple"] }); // add "text" only when text OTP is explicitly enabled
+```
+
+A **social `provider` jump always forces a fresh hosted sign-in** (0.0.69+): it
+defaults the standard OIDC `prompt` to `select_account`, so the jump never
+silently reuses a live OpenApps hosted session - after signing out, signing back
+in really does start a new sign-in rather than dropping the user straight back
+into the previous account.
+With **Google** that also reaches Google's own account picker every time, because
+OpenApps asks Google for `select_account` too; other providers re-run their own
+sign-in, which may still auto-approve if the user has a live session there.
+The identifier-first flows (`email` / `text` / `phone`) and plain `methods`
+lists keep deliberate silent SSO.
+Pass an explicit `prompt` to override, or `prompt: ""` to opt a social jump
+back into silent SSO.
+
+**Initialization completes both login modes.**
+There is no separate popup callback to wire.
+Use the [standard widget](app-auth.md#unified-widget) for mobile redirect, desktop popup, and blocked-popup fallback.
+`loginWithPopup({ methods })` remains available for a custom popup UI.
+Register the app's origins first (HTTPS, or localhost for development); an unregistered origin is rejected.
+Older clients require `completeLoginFromRedirect()` on startup; upgrade and rebuild to remove that requirement.
+
+The hosted redirect flow is the **most secure** human-login UX: the bare chooser, a
+`provider`-specific button, and a `methods` subset are all the same
+`loginWithRedirect` call, with the credential entered only on `auth.bounded.sh`. When
+both email and text are enabled, the hosted page shows one OTP form with an Email/Text
+switcher. If `methods` is ordered, the first enabled OTP method in that list is
+selected by default; use `provider: "text"` to jump straight to text only when enabled.
+The current SDK deliberately keeps the credential form on the hosted issuer;
+app-origin OTP helpers are not exported.
+
+### OAuth provider availability
+
+Use the provider ids OpenApps exposes for the app (`google`, `apple`, `github`,
+and optional `text` when enabled). Your app's origins (and any custom `redirectUri`
+you pass) must be registered; unregistered redirect URIs are rejected. If a provider you need is not available
+for the app, use a direct provider integration outside OpenApps Auth or wait until
+OpenApps exposes that provider publicly.
+
+### SMS / text OTP
+
+Text-message OTP is opt-in and off by default. It is not exposed by hosted login,
+SDK config, or headless routes unless OpenApps explicitly enables it for the
+app and SMS delivery is configured. When enabled, it uses the same
+authentication posture as email OTP: expiring codes, attempt limits, and rate
+limits.
+
+For app builders:
+
+- Phone numbers must be E.164, e.g. `+14155550132`.
+- Do not assume phone auth is available because SMS provider credentials exist;
+  public availability is controlled by the app's OpenApps Auth configuration.
+- Text OTP is for authentication only. Do not treat it as consent for arbitrary
+  app-originated SMS or WhatsApp messages.
+- For non-auth messaging, integrate a real provider with your own API keys or use
+  a public OpenApps-managed messaging surface if one is available. Follow sender
+  registration, opt-in, opt-out, and template rules for the channel.
+
+Do not route OTP codes to tenant app webhooks.
+
+Phone-only users get a normal `@user.id`, but `@user.email` is `null`. Do not
+email-gate phone-only users. Extend the policy/user model separately only if
+phone-number claims should become rule-visible.
+
+### Hosted auth on web and React Native
+
+Use `loginWithRedirect` or `loginWithPopup`; you own the button and method
+selection, but the credential is entered on `auth.bounded.sh`:
+
+```ts
+import { init, loginWithRedirect, getCurrentUser } from "@bounded-sh/client";
+
+await init({ appId: "<appId>" });
+const user = getCurrentUser();
+// Your own button → hosted chooser (or pass provider / methods to scope it):
+await loginWithRedirect({ methods: ["email", "google"] });   // web: no redirectUri (defaults to current page)
+```
+
+On **React Native** `loginWithRedirect` opens the system/in-app browser to the
+issuer and returns through your registered deep-link `redirectUri`; see
+[../guides/building-for-react-native.md](building-for-react-native.md)
+for the deep-link callback wiring.
+
+**Anonymous accounts coexist** — offer hosted login AND zero-friction guest
+accounts side by side (opt-in: set `"auth": { "anonymous": true }` in policy; see
+[anonymous-accounts.md](anonymous-accounts.md)):
+
+```ts
+import { signInAnonymously, loginWithRedirect, getCurrentUser, getLoginReturnError } from "@bounded-sh/client";
+
+const guest = await signInAnonymously();    // guest.isAnonymous === true
+// ...later, when the guest wants a durable real account, send them through the
+// SAME hosted redirect flow as any login — they come back as their real account:
+await loginWithRedirect({ methods: ["email", "google"] });   // web: no redirectUri needed
+// On app load, after awaiting init():
+const loginError = getLoginReturnError();
+if (loginError) throw loginError;
+const user = getCurrentUser();
+```
+
+> A guest who logs in via `loginWithRedirect` comes back as a **distinct** real
+> account (a new `@user.id`). The current client does not export an id-preserving
+> link helper. Because only the old guest identity can transfer guest-owned data,
+> do not attempt that transfer after replacing the session. Use the explicit
+> two-login handoff in [anonymous-accounts.md](anonymous-accounts.md#3-migrate-browser-guest-data-to-a-real-account),
+> or a separately designed one-time claim Function.
+
+`user.isAnonymous` (Firebase parity) tells you guest vs real, e.g. to show a
+"create a real account" prompt; in policy, `@user.isAnonymous == false` gates guests
+out of a rule (Supabase parity).
+
+> **Browser only in the current published client.** `signInAnonymously` requires
+> non-extractable WebCrypto Ed25519 keys persisted in IndexedDB. Standard React
+> Native does not provide IndexedDB, and configuring the RN session adapter does
+> not add it, so guest auth fails closed there. Use hosted RN login or the explicit
+> Privy Expo bridge. For Node/server code use **`@bounded-sh/server`** with a
+> keypair passed explicitly to `createWalletClient({ keypair })`.
+
+`authMethod` selects the **identity system**, not a login UI. The supported
+documented choices are:
+
+| Path | Configuration |
+|---|---|
+| Hosted OpenApps Auth (email, OAuth/social, optional text) | omit `authMethod` or use `authMethod: "email"`, then call `loginWithRedirect` / `loginWithPopup` |
+| Browser bring-your-own wallet | `authMethod: "phantom"` or its `"wallet"` alias, plus `walletLogin: true` |
+| React Native Privy | `authMethod: "privy-expo"` plus an explicit bridged `privyExpoProvider` |
+| Guest | call `signInAnonymously()`; guest is not selected through `authMethod` |
+
+Keep the default Turnkey auth and wallet behavior for normal apps. Do not add
+`authMode` or `auth.wallets` merely to get an address: supported email/social
+users receive a Turnkey wallet eagerly. Browser wallet login is the
+bring-your-own-wallet companion for users who already have a Solana wallet; see
+[Solana wallet login (bring your own)](#solana-wallet-login-bring-your-own).
+
+The authenticated `user` object — mirrored into policy as `@user.*` — has **four
+fields**:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `user.id` | `string` | the **universal stable identity**, **always present** for an authenticated user. For wallet logins it equals the wallet address; for OpenApps Auth logins (email, text, OAuth/social) it is the account identity. **Use this for ownership / membership / identity / auth guards.** |
+| `user.address` | `string \| null` | a **real onchain wallet address**. By default it is the email/social user's eagerly provisioned **Turnkey wallet**; a bring-your-own wallet login sets it to that real wallet. It can be `null` for guest/phone-only sessions or when wallets are explicitly disabled. **Use this for onchain operations / wallet semantics, not as the identity key.** |
+| `user.email` | `string \| null` | the verified, lowercased email for email/OAuth accounts. It is `null` for wallet and phone-only text users. Use it only when email-gating is genuinely intended. |
+| `user.isAnonymous` | `boolean` | `true` for a zero-friction **guest** (`signInAnonymously()`); `false` for any real (email/social/text/wallet) login. Drives the "create a real account" prompt. Mirrored in policy as `@user.isAnonymous` (offchain; write `== false` to gate guests out). |
+
+- **OpenApps Auth** (the canonical login) supports email OTP, optional text OTP (when
+  enabled), and OAuth/social login (Google, Apple, GitHub today) through the
+  hosted issuer or unified widget.
+  OpenApps Auth users authenticate as an **account identity** - a stable `@user.id` -
+  and by default also carry a non-custodial **Turnkey `@user.address`**. Explicit
+  `auth.wallets: false` disables embedded-wallet provisioning. Phone-only text users have
+  `@user.email == null`.
+- **Phantom (wallet login)** is the **bring-your-own-wallet companion** — it connects
+  an existing Solana wallet directly (the "connect wallet" choice), turned on at
+  `init()` with **`walletLogin: true`**. Add it when some users already have a wallet.
+  Here `@user.id` equals the real wallet address and `@user.address` is that same
+  address, and the user gets the full LOCAL signing surface
+  (`signMessage`/`signTransaction`/`signAndSubmitTransaction`). See
+  [Solana wallet login (bring your own)](#solana-wallet-login-bring-your-own).
+- Whatever the method, **`@user.id` is the stable thing every authenticated
+  request carries** — reach for it for identity. Reach for `@user.address` only
+  when you genuinely need a wallet.
+
+### React
+
+```tsx
+import { useAuth, loginWithRedirect } from "@bounded-sh/client";
+
+function AuthButton() {
+  const { user, logout, loading } = useAuth();
+  if (loading) return <Spinner />;                 // see "loading" below — drive your busy UI off this
+  return user
+    ? <button onClick={logout}>{user.id.slice(0, 6)}… ↩</button>   // user.id always present; user.address may be null
+    : <button onClick={() => loginWithRedirect({ methods: ["email", "google"] })}>Sign in</button>;
+}
+```
+
+**`loading` reflects ANY auth in progress** — session restore on load and the
+published login methods (`loginWithRedirect`, `loginWithPopup`,
+`signInAnonymously`). Render your "signing in…" state off it (e.g. a spinner/overlay
++ disabled buttons) so a popup or guest login isn't a dead-looking page. It flips back to
+`false` when the user resolves or the attempt fails — you don't manage it yourself.
+
+Imperative (non-React) equivalents: `onAuthStateChanged(cb)` and `onAuthLoadingChanged(cb)`
+(both fire immediately with the current value and return an unsubscribe fn), `getAuthLoading()`,
+`logout()`. Minimal busy UI without the hook:
+
+```ts
+import { onAuthLoadingChanged } from "@bounded-sh/client";
+onAuthLoadingChanged((busy) => { overlay.style.display = busy ? "block" : "none"; });
+loginWithPopup({ methods: ["google"] });   // overlay shows while the popup is open, hides on resolve
+```
+
+## How `@user.*` reaches your rules
+
+Every authenticated request carries a session token. OpenApps resolves it and
+exposes the identity to the policy as `@user.id` (always present when
+authenticated), plus `@user.address` (the wallet, or `null` for non-wallet
+logins) and `@user.email` (or `null`). `@user.id` is the hinge of every **auth /
+ownership** rule:
+
+```json
+"create": "@user.id != null && @newData.owner == @user.id"
+```
+
+The leading `@user.id != null` is mandatory — without it an unauthenticated
+caller writing `owner: null` satisfies `null == null`.
+
+Use `@user.id` - **not** `@user.address` - for ownership, membership, allowlist
+gates, and bare auth guards. `@user.id` is always present the instant a user is
+authenticated. Even though default Turnkey provisioning eagerly makes the wallet
+address available when a supported email/social login completes, identity rules
+should not depend on wallet-provider behavior. Reach for `@user.id` for identity
+and treat `@user.address` as the wallet.
+
+> **`@user.address` for wallet semantics.** With the default Turnkey configuration,
+> the issuer eagerly attaches a non-custodial wallet to supported email/social
+> logins and populates `@user.address`, so it is
+> safe to *use* for onchain operations and wallet lookups for email/social users, not
+> just wallet-login users. Keep keying **ownership/identity** on `@user.id`; use
+> `@user.address` for the wallet. See
+> [embedded-wallets.md](../../openapps-onchain/docs/embedded-wallets.md).
+
+**Onchain-only rule for `@user.address`:** inside an **`onchain: true`**
+collection, `@user.id`, `@user.email`, and `@user.isAnonymous` are all
+**forbidden** — only `@user.address` (a real wallet) is allowed, because onchain
+operations are wallet semantics. So the split is:
+
+```json
+// offchain collection — identity / ownership
+"create": "@user.id != null && @newData.owner == @user.id"
+
+// onchain: true collection — wallet semantics only
+"create": "@user.address != null && @newData.owner == @user.address"
+```
+
+Server-signed writes from `@bounded-sh/server` arrive with the **keypair's**
+wallet address; for onchain operations that is `@user.address`. Server logic is
+just another authenticated actor the rules judge — give the vault key the access
+its rules require, no more.
+
+## When a session expires
+
+Access tokens are short-lived and the SDK refreshes them for you. What matters is
+how a session that **cannot** be refreshed reaches your code, because it is not a
+policy failure and must not be handled like one.
+
+**An expired or otherwise rejected credential is a `401`, never a `403`.** The
+runtime answers `401 { error: "invalid_or_expired_token", code:
+"invalid_or_expired_session" }` before any rule runs, so a dead session can never
+be mistaken for "this user is not allowed to do that". Sending no credential at
+all is still anonymous, unchanged — public reads keep working for logged-out
+visitors.
+
+The SDK refreshes and replays the request for you, so you normally never see this.
+When the session genuinely cannot be revived, the call rejects with a typed error
+instead of quietly falling back to an anonymous request:
+
+```ts
+import { isAuthExpiredError } from "@bounded-sh/client";
+
+try {
+  await set(`runs/${runId}`, { owner: me.address });
+} catch (e: any) {
+  if (isAuthExpiredError(e)) {
+    // e.code === 'auth_expired'  -> the session is gone; prompt a fresh login
+    // e.code === 'auth_changed'  -> a different account signed in mid-request;
+    //                               the request was NOT replayed as them
+    return showSignIn();
+  }
+  throw e;   // a real policy denial (BoundedDeclineError) or anything else
+}
+```
+
+**Never treat a `403` / `policy_denied` as "log in again".** It means an
+authenticated caller was judged and refused. Retrying it with a fresh token
+changes nothing.
+
+**Drive connected-state UI from `onAuthStateChanged`, not from a snapshot.** A
+wallet extension can stay connected long after the OpenApps session behind it has
+expired, and it is the OpenApps session that authorizes writes. `onAuthStateChanged`
+fires when a session dies on its own — not only on an explicit `logout()` — so a
+header, a "connected" badge, or anything bound to `user.address` stays truthful:
+
+```ts
+onAuthStateChanged((user) => setWallet(user?.address ?? null));
+```
+
+Reading `getCurrentUser()` once at mount is the trap: it never updates, so the UI
+keeps advertising a wallet the server no longer accepts.
+
+> **`logout()` and `clearSession()` are async — await them.** Session removal is
+> serialized across browser tabs, so a call you do not await can return while the
+> credential is still readable, and the very next request authenticates as the
+> user who just left.
+
+> **Auth guards use `@user.id != null`.** `@user.isAnonymous == false` is *not* an
+> authentication check — it distinguishes a guest from a real login, and it is also
+> `false` for a caller with no session at all. Always lead with `@user.id != null`
+> (or `@user.address != null` inside an `onchain: true` collection).
+
+## Related
+
+- [../guides/building-a-webapp.md](building-a-webapp.md) — wiring end-user auth into a web app
+- [../guides/building-for-agents.md](../../openapps-backend/docs/building-for-agents.md) — the zero-ceremony keypair flow
+- [sdk-reference.md](sdk-reference.md) — `login` / `useAuth` / `createWalletClient`
+- [embedded-wallets.md](../../openapps-onchain/docs/embedded-wallets.md) - default Turnkey wallet provisioning and `@user.address` for email/social login
+- [admin-and-ownership.md](../../openapps-backend/docs/admin-and-ownership.md) — control-plane collaborators vs data-plane rules (no god-mode)
+- [access-control.md](../../openapps-backend/docs/access-control.md) — control roles, sharing by email (registered or brand-new), external contributors & platform super-admins
+- [cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — `link`, `share`/`unshare`/`collaborators` flags
+- [policy-reference.md](../../openapps-backend/docs/policy-reference.md) — `@user.id` / `@user.address` / `@user.email` in the rule language

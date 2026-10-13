@@ -1,0 +1,119 @@
+---
+name: openapps-deploy
+description: >-
+  Ship and configure an OpenApps app: CLI setup, browser-backed developer login,
+  deploy, hosted frontend publishing, environments, source sync,
+  domains, bounded.json, collaborators, and release recovery. Part of the
+  OpenApps skill family.
+---
+
+# OpenApps deploy
+
+Use this skill to initialize, ship, configure, and share an OpenApps app.
+Policy authoring belongs in **openapps-backend**; client code and app-user auth
+belong in **openapps-frontend**.
+
+## Default workflow
+
+For a new project or a normal release, read
+[docs/quickstart.md](docs/quickstart.md). The expected path is:
+
+```bash
+openapps init
+openapps deploy --create --name my-app
+```
+
+`openapps init` reuses a saved web session or opens hosted browser login. It
+writes public `bounded.json` (with `"sourcePush": true`, so deploys sync the
+project source) and `policy.json`; credentials never belong in either file.
+
+## Task router
+
+Read only the reference needed for the current task.
+
+| Task | Read |
+|---|---|
+| First setup, normal deploy, publish a site, multiple app IDs from one project | [docs/quickstart.md](docs/quickstart.md) |
+| Normal web account login, session refresh, headless OTP, account switching | [docs/accounts.md](docs/accounts.md) |
+| Hosted web frontend, preview, private/public access | [frontend-hosting.md](../openapps-frontend/docs/frontend-hosting.md) |
+| Multi-environment policies: per-env app id, constants, schedule cadence, function scoping | [docs/environments.md](docs/environments.md) |
+| Build an app from a prompt, iterate with `edit`, watch/cancel/gate a run | [docs/cli-reference.md](docs/cli-reference.md) (Prompt-driven builds) |
+| Source sync, `--with-source`, clone, pull | [docs/source-sync.md](docs/source-sync.md) |
+| Port an existing app (Supabase, Firebase, Express, Next, a key-holding backend) onto OpenApps; decide what becomes rules, functions, schedules, or a capability | [docs/porting-an-existing-app.md](docs/porting-an-existing-app.md) |
+| Third-party API discovery, readiness, and requests: `openapps services search/describe/request/status` | [docs/cli-reference.md](docs/cli-reference.md) (Capabilities) |
+| The dry run of the checks an oApp must pass to open: `openapps oapp preflight` | [docs/cli-reference.md](docs/cli-reference.md) (Open Apps) |
+| Custom domains and vanity slugs | [docs/domains.md](docs/domains.md) |
+| Share, access, owner mismatch, `401`/`403` | [docs/access-playbook.md](docs/access-playbook.md) |
+| Delete an app permanently (browser-confirmed, owner only) | [docs/cli-reference.md](docs/cli-reference.md) (`apps delete`) |
+| Uncommon command or exact flag lookup | [docs/cli-reference.md](docs/cli-reference.md) |
+| Local signing keys, profiles, CI key auth, legacy key-owned apps | [docs/key-and-account-safety.md](docs/key-and-account-safety.md) |
+
+Do not load the local-key reference during normal onboarding. It is an advanced
+alternative for users who explicitly request local signing, CI key auth, an
+account profile, or recovery of an existing key-owned app.
+
+## Incident router
+
+- `deploy_in_progress`, `operationId`, or `recoveryCommand`: use only the exact
+  owner-visible recovery command with unchanged inputs, then let the CLI poll.
+  See [deploy recovery](docs/cli-reference.md#recover-an-in-progress-policy-deploy).
+- An error with `code`/`state` but NO `recoveryCommand` is terminal for that
+  operation - `410 policy_operation_unrecoverable` and the abandoned, superseded,
+  target-mismatch and manual-intervention states. Re-running the recovery can
+  never commit it; run a fresh `openapps deploy` (or escalate, when the message
+  says operator review). Never invent a recovery command for these.
+- `onchain_creation_pending`, `onchain_creation_unreadable`, or
+  `onchain_creation_superseded` (all `409`): the app's mainnet creation never
+  finished - its on-chain owner is not proven at finalized yet, so nothing can
+  be deployed to it and nothing has been signed or spent.
+  Re-run the SAME `openapps deploy` for that app id: the platform resumes the
+  original creation and lifts the fence as soon as the account is finalized.
+  Never re-run `--create`, and never create a replacement app - the first app's
+  on-chain account is already paid for and a second one strands that rent.
+- `onchain_creation_owner_conflict` (`409`): the app's on-chain account is
+  finalized under a wallet the creation did not intend. That is an integrity
+  fault, not a state to retry; escalate for operator review.
+- Unsure which applies, or unsure whether a fresh deploy is safe: run the
+  read-only `openapps deploy status --json` first. It reports what holds the
+  deploy slot and a `freshDeploySafe` verdict, and it never mutates anything.
+- Before a deploy, to know whether it will LAND (not just whether the slot is
+  free): run the read-only `openapps deploy preflight --json`. Deploys are metered
+  against the app's credit balance - each leg charges its actual Cloudflare infra
+  cost (sub-cent; no per-tier deploy cap, no minimum), so an out-of-credit app is
+  refused. Preflight reports the credit balance + a `would_likely_admit/refuse/
+  unknown` verdict so you can tell the user "this will land" or "top up first"
+  before spending time on the deploy. It never mutates anything.
+- `402 deploy_credit_insufficient` on `site deploy`: billing, not identity. The
+  deploying account has no spendable credit for the deploy's infra cost. Run
+  `openapps billing status`, add credit with `openapps billing topup --credits <n>`,
+  then retry under the same identity. Switching accounts never helps here.
+- Custom domain still pending after DNS is configured: rerun `openapps domains list --app-id <id> --env <environment> --json` to refresh status and reconcile activation.
+  Verify DNS and follow the bounded retry/escalation steps in [domains](docs/domains.md#after-adding-dns-refresh-through-the-cli).
+  Listing does not generally restart provider validation; do not substitute provider-dashboard instructions for a public CLI workflow.
+- `site_control_denied` (a `403`), wrong owner, or unexpected `401`/`403`: run
+  `openapps whoami` and `openapps access --app-id <id>` before changing identity.
+  See [access playbook](docs/access-playbook.md).
+- `project_daily_limit_exceeded` (a `429`): a Free account may create 20 apps
+  per rolling 24 hours, and this one has. Read `limit` and `resetsAtMs` (also
+  `Retry-After`) and tell the user when the next create fits; wait for it or
+  reuse an existing app the user approves. Upgrading removes the limit;
+  deleting apps does not free it. Never delete or repurpose an app
+  automatically. See [billing](../openapps/docs/billing.md#project-creation-limits).
+- `boundary_violation`: changing accounts will not bypass an app boundary. Use
+  the boundary-lock section of the access playbook.
+
+## Release rules
+
+- Read `bounded.json` first in an existing app.
+- The `policy.json` that `bounded.json` names is what deploys.
+  Before running a script that generates it, diff its output against the committed file; if it drops or changes anything you did not mean to change, the generator is stale: update it or delete it, never deploy its output.
+- `openapps deploy` validates and compiles the policy and refuses an invalid one before anything changes; there is no separate proof step.
+- After a release-critical deploy, use
+  `openapps apps inspect --app-id <id> --json` to confirm the active policy and
+  runtime publication before measuring behavior.
+- Resolve the hosted URL from the exact site receipt or
+  `openapps domains list --app-id <id> --env <environment> --json`. Do not invent
+  a hostname.
+- Share control-plane access with
+  `openapps share <email-or-wallet> --role admin|developer|viewer|billing`.
+- Do not commit credentials, web sessions, refresh tokens, or provider secrets.

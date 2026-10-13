@@ -1,0 +1,167 @@
+# Quality Checklist
+
+Run this before `openapps deploy`. A policy that deploys clean can still be a *bad*
+policy — green but hollow (no invariants on money), or green but leaky (a write
+rule that an unauthenticated caller satisfies). This checklist is distilled from
+the eval rubrics that grade generated policies; it catches the difference between
+"compiles" and "correct."
+
+## The self-check
+
+### Auth — every collection, every action
+
+- [ ] **Every collection has an explicit rule for `read`, `create`, `update`,
+  `delete`.** Omitted = deny, but write it out so "deny" is a decision, not an
+  oversight.
+- [ ] **Every write rule leads with `@user.id != null`** (unless the write is
+  genuinely public). Without it, `@newData.owner == @user.id` is satisfied by
+  an unauthenticated caller writing `owner: null`.
+- [ ] **Ownership / role is actually checked**, not just referenced. "Only the
+  owner updates" → `@data.owner == @user.id`. "Only an admin" →
+  `get(/.../members/@user.id).role == "admin"`.
+- [ ] **Membership is not self-service.** A `create` rule for a membership / roster
+  collection gates on a tenant-issued invite or an existing member, never on
+  `$memberId == @user.id` alone — self-enrollment lets anyone join any tenant and
+  read its data.
+- [ ] **A declared scope field is actually read in the rules.** If an admin / role row
+  declares a `tenant` (or org / team) field, every privileged `create` / `update` /
+  `delete` compares it (`get(/.../@user.id).tenant == @newData.tenant`); a
+  declared-but-ignored scope field lets an admin of one tenant act on another.
+  Closure through existing admins does not cover tenant scope by itself.
+- [ ] **Sensitive reads are scoped.** A user's private data uses `$userId ==
+  @user.id` or a membership `get()`, not `read: "true"`.
+- [ ] **Identity uses `@user.id`, not `@user.address`.** `@user.id` is the
+  universal stable identity, always present for an authenticated user (the wallet
+  address for wallet logins, the account identity for email/social logins).
+  `@user.address` is a real onchain wallet address — present for wallet logins and,
+  by default, for supported email/social logins too, but still `null` for
+  phone-only sessions, `auth.wallets: false` apps, and the legacy lazy
+  `authMode: "bounded"` path — so reserve it for onchain / wallet semantics. In
+  `onchain: true` collections only `@user.address` is allowed; `@user.id`,
+  `@user.email`, and `@user.isAnonymous` are forbidden there.
+
+### No trivial, dead, or unsatisfiable rules
+
+- [ ] **No accidental `"true"` on a write** that should be gated; treat each
+  always-true rule as a question.
+- [ ] **No dead rules** (contradictions that silently deny everything); a rule
+  you meant to allow something that can never be true is a bug. An allow test
+  that unexpectedly fails for the owner is how you catch one.
+- [ ] **No always-false `update`/`delete` you actually need.** `"false"` is correct
+  for immutable/append-only data — make sure you meant it.
+
+### Boundaries covered by invariants
+
+- [ ] **Every money / balance / supply field is under a `conserve`** if its total
+  must be preserved. A balance field with no conservation invariant means any write
+  can mint value.
+- [ ] **Fixed-supply genesis is seeded under a mint authority.** To launch a `conserve`d
+  supply, gate the pre-`conserve` seeding writes on a mint authority (`@user.id ==
+  @const.MINT_AUTHORITY`), not the document-owner `create` / `update` rule — otherwise any
+  user mints into their own row before `conserve` freezes the total. Enable `conserve` and
+  open public transfers in the same deploy.
+- [ ] **Every quota / budget / rate field is under a `rollingSum`** with the right
+  window and limit; add `scopeVariable` for per-actor caps.
+- [ ] **Every multi-tenant collection has a `tenantTag`**, and every cross-tenant
+  reference has a `tenantEdge` (with both ends tagged).
+- [ ] **You did step 4 of generation.** If the description involves spending,
+  balances, tenancy, or limits and you have zero invariants, you missed a
+  non-negotiable. (See [policy-generation-guide.md](policy-generation-guide.md).)
+- [ ] **Invariants are named** like error codes — the name is the `409`.
+
+### Types match intent
+
+- [ ] **`rollingSum` fields are `UInt`**; **`conserve` fields are `Int`/`UInt`**;
+  **tenant tag fields are `String`.**
+- [ ] **Set-once fields are `!`** (owner, author, tenant) so the runtime
+  rejects a later change.
+- [ ] **Optional fields used in numeric/comparison rules are null-guarded** — or
+  made required. Otherwise a null value slips past the comparison.
+- [ ] **A field compared as more than one type is declared in `fields`.** A
+  fieldless collection infers each field's type from its rules, so a field
+  compared to a string in one rule and a number in another is ambiguous;
+  declare that field's type to resolve it.
+
+### Tiers justified
+
+- [ ] **`durable` for anything an invariant protects** (and for final results). Not
+  optional: `rollingSum` / materialized `conserve` reject non-durable at deploy.
+- [ ] **`ephemeral` / `checkpointed` only where the loss window is acceptable** —
+  presence, cursors, in-flight game state. Don't put a ledger on `ephemeral`.
+
+### Onchain only where needed
+
+- [ ] **Default offchain.** Mark `"onchain": true` only when the description needs
+  a blockchain guarantee. Onchain adds cost and constraints (`read: "true"`, no
+  `Float`, no offchain `get()`).
+- [ ] **No `onchainSupported` overclaim.** Claim it only for an invariant scoped
+  to its own `onchain: true` collection: `conserve` (direct, materialized, or
+  sharded), `tenantTag`, full-path `tenantEdge` without `targetPathVariable`, or
+  `rollingSum` within the onchain window cap and without `resetAtMs`.
+  Deploy validation rejects every unsupported form.
+- [ ] **No silent underclaim either.** An invariant on an `onchain: true`
+  collection with `onchain` OMITTED is enforced offchain only - onchain program
+  writes are not checked against it, and nothing fails. Declare
+  `"onchainSupported"` where supported, or `"offchainOnly"` to record the
+  offchain-only choice as deliberate.
+
+### Extras are warranted
+
+- [ ] **Hooks use the right plugin** — `@DocumentPlugin` for offchain side effects;
+  onchain plugins only in `hooks.onchain` on onchain collections.
+- [ ] **`enforceRules` is deliberate.** Default-privileged hooks bypass per-actor
+  rules; set `enforceRules` when a hook's fan-out should be caller-bound. (Never
+  affects invariants.)
+- [ ] **Webhooks are verified server-side** with `verifyWebhook` before acting.
+- [ ] **Search declares only fields you search**; storage collections scope file
+  access by path.
+
+### Tests pass clean
+
+- [ ] **`openapps tests run` passes**, with an allow and a deny test for each
+  sensitive seam.
+- [ ] **Every failing test was fixed by strengthening the policy**, never by
+  deleting the property or weakening the rule.
+- [ ] **You re-ran the tests after the last edit.**
+- [ ] **Every invariant has a test that fires it.** A trivially-true rule or a
+  `rollingSum`/`conserve` that never actually fires on the real write path
+  deploys fine; a concrete scenario catches both. See
+  [policy-tests.md](policy-tests.md).
+
+## The two failures that hide in green policies
+
+1. **Hollow** — compiles, but a money/quota/tenant property has no invariant.
+   Nothing is actually protected. Fix: do step 4; add the invariant.
+2. **Leaky** — compiles, but a write rule is satisfiable by an unauthenticated or
+   wrong caller (`@user.id == null` matching a `null` owner, missing role check).
+   Fix: lead with the auth guard; check ownership/role concretely. A deny test
+   with no session catches the first; your own review catches the second.
+
+## Is the product real? (don't ship a stub)
+
+A governed backend under a faked product is **not done** — and it's a worse outcome
+than no app, because it *looks* finished. The policy can be flawless while the thing
+the user actually wanted is hollow. Before you call it done:
+
+- [ ] **The core value is real, not simulated.** No `Math.random()` or hard-coded
+  placeholder standing in for the product's actual job (real prices, real matches,
+  real analysis, real results) — unless the user explicitly asked for a mock.
+- [ ] **AI / LLM features call `ctx.ai.run`** — real inference, no API key needed —
+  not templated strings pretending to reason. See
+  [functions.md](functions-ctx-ai.md).
+- [ ] **External integrations are wired** (broker, payments, data feed, third-party
+  API) via a function `fetch` — or explicitly deferred *with the user told plainly*
+  which parts are stubbed and why.
+- [ ] **Money flows through real rails.** Selling credit or charging users → route
+  through **OpenApps billing** (`/billing/checkout`, x402) or the owner's
+  `openapps link` + top-up — not a hand-rolled fake checkout.
+- [ ] **You stated the honest scope.** If something is a placeholder, say so up
+  front; never present a demo as a finished product.
+
+> The invariants are the *guarantee* layer: they make a real app unbreakable, but they
+> do not make a stub real. Build the product, then let the invariants bound it.
+
+## Related
+
+- [policy-generation-guide.md](policy-generation-guide.md) — the method that produces this by construction
+- [invariants.md](invariants.md) — RULES vs INVARIANTS, so the right things are covered

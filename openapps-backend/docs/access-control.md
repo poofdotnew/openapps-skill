@@ -1,0 +1,359 @@
+# Access control — the `access` block, roles, and platform super-admins
+
+**What's in here / when to read this:** how to control *who can administer an app*
+(deploy, manage privacy/billing, share, run cloud edits, fork the UI) — and how to build
+a **platform** on OpenApps with **super-admins**. This is the CONTROL plane. For the DATA
+plane (who can read/write app data) see [admin-and-ownership.md](admin-and-ownership.md)
+and [roles.md](roles.md). The two compose; the bridge below connects them.
+
+> **B2C default — you usually need none of this.** A normal app: the creator is the
+> `owner` and can do everything; everyone else has nothing until granted. No `access`
+> block required. Only reach for this when you want collaborators, external contributors,
+> or a multi-tenant platform with super-admins.
+
+## The one model
+
+Two planes, one identity, one source of truth:
+
+- **Identity = the account.** Tracked by the canonical account **id** (`@user.id`).
+  **Email and wallet are facets** you author/share with — they resolve to the id. So you
+  can invite, log in, and share **by email** and it just works (see "Share by email").
+- **Control plane** (this doc): the `access` block in `policy.json` + `openapps share`.
+- **Data plane**: `policy.json` rules + invariants. **No owner god-mode** — the owner is
+  governed too. The control roster is exposed to policy as *opt-in* primitives (the bridge).
+
+## ⚠️ Read this first: control roles vs an `admins/$userId` collection
+
+The single most common confusion (for humans AND agents): **the `access` block does NOT
+replace a data-plane `admins` collection.** They answer different questions — pick by
+*who* the "admin" is.
+
+| If the "admin" is… | …it's the | Use |
+|---|---|---|
+| someone who **operates the app** (deploys, billing, settings) — your **team** | **control plane** | `openapps share --role` or the `access` block (this doc) |
+| one of your **app's end-users** with elevated **in-app** powers (forum moderator, game admin) — **changes at runtime** | **data plane** | a normal `admins/$userId` collection + rules gating on `get(/admins/@user.id)` — see [admin-and-ownership.md](admin-and-ownership.md) |
+
+Rule of thumb: *"helps run the app" → control plane (access block). "is a special kind of
+my app's user" → data plane (a collection you write at runtime).*
+
+The two look identical but are NOT the same — mind the underscores:
+
+- `get(/__admins__/@user.id)` — **double underscore, RESERVED.** The control-plane admin
+  set (your collaborators with the admin role), exposed **read-only**. You can't write it.
+- `get(/admins/@user.id)` — **your own collection.** A data-plane collection you define
+  and `set(...)` at runtime (moderators, etc.). Governed by your rules + the founder-genesis
+  pattern.
+
+They only meet at the optional **bridge**: a rule *may* read `get(/__admins__/@user.id)` if
+you want your operators to also have data powers. An `actAs` service-identity
+function's `auth` rule may use that bridge as its admin gate (`get(/__admins__/@user.id) != null` or
+`get(/__owners__/@user.id) != null`, keyed by `@user.id`), so an app whose privileged functions
+are run by its own team needs no `admins` collection at all. Otherwise the two never touch.
+**A B2C app with end-user roles (moderators, etc.) uses an `admins`/`roles` collection and may
+need no `access` block at all.**
+
+## Control roles (preset bundles of capabilities)
+
+| Role | Can |
+|---|---|
+| `owner` | everything (one per app, transferable) |
+| `admin` | manage the app + act on data — *not* delete/transfer/manage-the-roster |
+| `developer` | **read the source** + deploy/update policy, functions, and the UI — this IS the **bounded-agent** role (renames the legacy `policy` role) |
+| `viewer` | read-only management surfaces (the "external people" tier) |
+| `billing` | view + manage billing |
+
+> **⚠️ Plan gating — check the OWNER's plan before suggesting a role.** Collaboration is
+> a paid feature, billed to the **app owner's** plan:
+>
+> | Owner's plan | Seats | Roles you can grant |
+> |---|---|---|
+> | Free | 0 — solo | none |
+> | Pro | 3 | **`developer` only** (full build access: deploy policy/functions/UI) |
+> | Team | 25 | all of them — `developer`, `admin`, `viewer`, `billing` |
+> | Enterprise | unlimited | all |
+>
+> On Pro, `--role admin`/`viewer`/`billing` is rejected with a `402` telling you to re-run
+> with `--role developer` or upgrade to Team. **Default to `--role developer`** unless you
+> know the owner is Team+ — for "help me build/deploy this app" it's the right role anyway.
+
+Grant with the CLI:
+
+```bash
+openapps share <wallet>          --role developer --app-id <id>   # any paid plan
+openapps share newperson@x.com   --role developer --app-id <id>   # works before they sign up
+openapps share alice@example.com --role admin --app-id <id>       # Team+ owners only
+```
+
+### What each preset actually contains (the capability matrix)
+
+The prose above is a summary — this is the ground truth. `admin` is **owner minus the
+three keys-to-the-kingdom** (`app:delete`, `app:transfer`, `access:manage`), so **`admin`
+is a strict superset of `developer`** (and of `viewer`/`billing`). It already includes
+`code:read` + `policy:deploy` + `functions:deploy` + `ui:deploy`.
+
+| Capability | owner | admin | developer | viewer | billing |
+|---|:--:|:--:|:--:|:--:|:--:|
+| `app:view` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `analytics:view` (raw analytics, `openapps decisions`, per-user lists) | ✓ | ✓ | ✓ | ✓ | — |
+| `code:read` (read source) | ✓ | ✓ | ✓ | — | — |
+| `policy:deploy` | ✓ | ✓ | ✓ | — | — |
+| `functions:deploy` | ✓ | ✓ | ✓ | — | — |
+| `ui:deploy` | ✓ | ✓ | ✓ | — | — |
+| `ui:fork` | ✓ | ✓ | — | — | — |
+| `cloud:prompt` / `cloud:apply` | ✓ | ✓ | — | — | — |
+| `data:act` | ✓ | ✓ | — | — | — |
+| `app:settings` | ✓ | ✓ | — | — | — |
+| `billing:manage` | ✓ | ✓ | — | — | ✓ |
+| `access:manage` (roster) | ✓ | — | — | — | — |
+| `app:delete` | ✓ | — | — | — | — |
+| `app:transfer` | ✓ | — | — | — | — |
+
+**⇒ To let someone edit AND redeploy an app AND manage its data/settings — but not delete
+it, transfer ownership, or add collaborators — grant `admin` alone.** You do **not** also
+need `developer`; `admin` already covers deploy. Reach for `developer` when you want *only*
+build/deploy powers (e.g. an AI agent) with no settings/billing/data access.
+
+### `openapps share` sets ONE role per collaborator (last-write-wins)
+
+The CLI stores a **single** role per subject — re-sharing with a new role **replaces** the
+old one, it does not stack. (The `access`-block `grants` array below is the only place
+capabilities compose — via *custom roles*, not by listing a person twice.) Since the presets
+nest (`viewer`/`billing`/`developer` ⊂ `admin` ⊂ `owner`), pick the **one** preset that
+covers everything the person needs; if no single preset fits, define a custom role.
+
+Verify the effective result any time with:
+
+```bash
+openapps access --app-id <id> --json   # per-member capability arrays — the source of truth
+```
+
+## Custom roles + capabilities (the flexible layer)
+
+Roles are *bundles of capabilities*. The atomic capabilities (`surface:action`):
+`app:view` · `analytics:view` · `app:settings` · `app:delete` · `app:transfer` · `access:manage` ·
+`billing:manage` · `policy:deploy` · `functions:deploy` · `ui:deploy` · `ui:fork` ·
+`code:read` · `cloud:prompt` · `cloud:apply` · `data:act`.
+
+Author custom roles + grants in the **`access` block of `policy.json`** (agents edit this
+directly; it deploys with the policy):
+
+```jsonc
+{
+  "access": {
+    "roles": { "ui-contributor": ["ui:fork", "cloud:prompt"] },
+    // grants are always to a SPECIFIC, named subject (so the roster is a real list):
+    "grants": [
+      { "subject": "alice@example.com", "role": "admin" },
+      { "subject": "team:design",       "role": "ui-contributor" }
+    ],
+    // `external` opens the app to NON-collaborators (a whole class, not named people):
+    "external": {
+      "widget":  "viewer",      // non-owners see this role's read-only surfaces in the widget
+      "propose": "signed-in"    // anyone signed-in may SUGGEST cloud edits (proposals you approve)
+    }
+  }
+}
+```
+
+- **grants → `subject`** = `email` | `wallet` | `team:<name>` | account id — always a
+  **specific** person/team. (There is **no** `audience` in grants — "open to a whole class"
+  lives in `external`, below. Grants are the enumerable roster.)
+- **`role`** pulls in a preset or a custom role; or skip it and list raw `capabilities`.
+- **workflow** = `direct` (applies now) or `propose` (creates a fork/variant you promote —
+  the wiki/PR flow; reuses the [variant system](../../openapps-frontend/docs/frontend-hosting.md)).
+- **`external.widget`** = the read-only role non-owners see in the widget (e.g. `viewer`).
+- **`external.propose`** = `signed-in` | `public` — who may **suggest** cloud edits as
+  proposals (the open-contribution / wiki flow). It only ever grants `cloud:prompt` as a
+  *proposal*, never a direct change. This is the ONLY "whole class" knob — and it belongs to
+  `external` because it's about opening the app to outsiders. **NOTE:** "any signed-in user
+  can create a post" is **not** this — that's a plain **data rule** (`"create": "@user.id != null"`).
+
+### The `developer` role IS the "bounded-agent" role
+
+To let an **AI agent** build an app end-to-end — read the source, then deploy policy,
+functions, and UI — share its key (or grant) as **`developer`**. That preset is exactly
+`app:view + code:read + policy:deploy + functions:deploy + ui:deploy` — everything an agent
+needs and nothing it doesn't (no delete/transfer/billing/roster):
+
+```bash
+openapps share <agent-wallet-or-email> --role developer --app-id <id>
+```
+
+`code:read` is the capability to **retrieve the project's source** (clone/read the managed
+repo, the base for a cloud edit). Want a tighter or differently-named agent role? Define a
+custom one — e.g. a read-only reviewer:
+
+```jsonc
+"access": { "roles": { "reviewer": ["app:view", "code:read"] } }   // sees + reads source, deploys nothing
+```
+
+## Share by email — registered OR brand-new (important)
+
+A grant authored by email is **stored as the email** and matched against the recipient's
+**verified** email facet. So:
+
+- **Already-registered email** → matches immediately, however they log in.
+- **Brand-new, never-bound email** → the grant waits in the manifest and **binds the
+  instant that person verifies the email at signup**. No pending list, no migration.
+
+Only OTP/social-verified emails ever match, so only a proven holder of the address gets in.
+
+## The bridge — control roster → data plane (no backdoor)
+
+Being an owner/admin does **not** bypass data rules. Instead the runtime injects read-only
+role sets your policy can **opt into**:
+
+```jsonc
+"posts/$id": {
+  "rules": {
+    // an admin (control plane) may moderate — only because the policy SAYS so:
+    "update": "@user.id == @data.author || get(/__admins__/@user.id) != null"
+  }
+}
+```
+
+Available sets: `/__owners__`, `/__admins__`, `/__developers__`, `/__viewers__`,
+`/__billing__`, `/__collaborators__`, and `/__managers__` (owner + every collaborator) —
+all keyed on `@user.id` and matched across the account's wallet/email facets. They are
+**read-only projections** of the control roster: a data-plane write can never create or
+modify an entry (the `__`-prefixed paths are write-blocked), so nobody can self-promote.
+This keeps the no-god-mode + provability guarantees: the control plane *seeds* the data
+plane, policy still governs everyone.
+
+## Invite codes - gating data on "redeemed an invite"
+
+A private app can hand out invite CODES instead of granting access one email at a time
+(see the openapps-deploy skill for minting them). When someone redeems a code they become
+a **member**, and the platform records that at `/__invitees__/<accountId>` - another
+read-only projection your rules can opt into:
+
+```jsonc
+"members/$id": {
+  // any account that redeemed ANY invite code for this app
+  "rules": { "read": "get(/__invitees__/@user.id) != null" }
+},
+"founders/$id": {
+  // narrower: only the people who came in on a specific code
+  "rules": { "read": "get(/__invitees__/@user.id).code == 'FOUNDERS2026'" }
+}
+```
+
+The record carries `code` (the vanity label, or the code id for a random code), `kind`
+(`owner` or `referral`), `invitedBy` (the account id of whoever minted it) and
+`redeemedAt`. Like the role sets above it is platform-written and write-blocked, so an
+app can never mint its own membership; and because it is a `__` path it cannot be declared
+as a collection, listed, or joined - rules read it, nothing else.
+
+Membership is deliberately NOT a control-plane grant: it carries no capability and no
+billing seat, so no code (and no referral chain) can become a route to `policy:deploy`.
+
+Referrals are opt-in from the `access` block:
+
+```jsonc
+"access": {
+  "invites": {
+    "referrals": { "codes": 3, "maxUses": 1, "expiresDays": 30 }
+  }
+}
+```
+
+`codes` (1-20, required) is how many codes each member may mint for friends; `maxUses`
+(1-100, default 1) and `expiresDays` (1-365, default none) shape the codes they mint.
+Omit the block entirely and members cannot mint anything.
+
+## Platform use-case — super-admins (multi-tenant apps on OpenApps)
+
+Building a **platform** (a multi-tenant SaaS, marketplace, or tool where *your* users each
+own sub-resources, and *you* need super-admins across all of them)? Two layers, and they
+stack cleanly:
+
+**1. Platform super-admins (control plane).** The people who run the platform are the app
+`owner` + `admin` grants in the `access` block. They deploy policy, manage billing, and —
+via the bridge — can be given cross-tenant data powers your policy declares. Make one
+easily:
+
+```bash
+openapps share ops@yourco.com --role admin --app-id <platformAppId>
+```
+
+**2. In-app super-admins (data plane), closed by construction.** When *your platform's own users*
+include super-admins (e.g. moderators who can act across every tenant), declare them as a
+flat admin registry and gate rules on it:
+
+```jsonc
+{
+  "constants": { "FOUNDER": "<your-account-id>" },
+  "admins/$userId": {
+    "fields": { "active": "Bool" },
+    "tier": "durable",
+    "rules": {
+      "read":   "@user.id != null",
+      // only ACTIVE admins add admins; the founder bootstraps (genesis clause).
+      // Every privileged gate reads `.active == true`, not mere existence, so
+      // `active: false` is a REAL off-switch (see the revocation note below).
+      // Gate on THIS collection (/admins), NOT the control-plane bridge (/__admins__). Every
+      // write action needs `@user.id != null` so an anonymous caller can't slip in.
+      "create": "@user.id != null && (get(/admins/@user.id).active == true || @user.id == @const.FOUNDER)",
+      "update": "@user.id != null && get(/admins/@user.id).active == true",
+      "delete": "@user.id != null && get(/admins/@user.id).active == true"
+    }
+  },
+  "tenants/$tenantId": {
+    "fields": { "owner": "String!", "name": "String" },
+    "tier": "durable",
+    "rules": {
+      "read":   "true",
+      "create": "@user.id != null && @newData.owner == @user.id",
+      // the holder may transfer; an ACTIVE admin may moderate but NOT seize
+      // ownership (@newData.owner == @data.owner).
+      "update": "@user.id != null && (@user.id == @data.owner || (get(/admins/@user.id).active == true && @newData.owner == @data.owner))",
+      "delete": "@user.id != null && (@user.id == @data.owner || get(/admins/@user.id).active == true)"
+    }
+  },
+  "tenants/$tenantId/items/$itemId": {
+    "fields": { "body": "String" },
+    "tier": "durable",
+    "rules": {
+      "read":   "true",
+      "create": "@user.id != null && @user.id == get(/tenants/$tenantId).owner",
+      "update": "@user.id != null && (@user.id == get(/tenants/$tenantId).owner || get(/admins/@user.id).active == true)",
+      "delete": "@user.id != null && get(/admins/@user.id).active == true"
+    }
+  }
+}
+```
+
+*(Validates clean at deploy. The `.active == true` gate implies the record
+exists, so it is at least as strict as an existence check, and the only
+intentionally public rules are the `read` rules.)*
+
+> **`active` is a REAL off-switch - use it to revoke.** Every privileged rule gates on
+> `get(/admins/@user.id).active == true`, not on mere existence, so writing
+> `{ "active": false }` to a misbehaving admin instantly strips every power - they can no
+> longer moderate, transfer, or add/remove admins. An active admin (or the founder)
+> performs that deactivating write. Because `update` itself requires `.active == true`, a
+> deactivated admin cannot flip their own row back on (no self-reactivation). Keep at
+> least one active admin: the founder genesis `create` clause is the recovery path if the
+> active set is ever emptied. The rule is scoped: **if a registry declares an `active`
+> field, every gate (and its own `update`/`delete`) must consult it** - do not gate on
+> `get(/admins/@user.id) != null` alone here, because that checks only that the row exists
+> and makes `active` a dead, decorative field. (An admin registry that declares **no**
+> `active` field is a valid, simpler design - there, revocation is by deleting the row;
+> see [service-keys.md](service-keys.md) and the bare-existence gate in
+> [admin-and-ownership.md](admin-and-ownership.md).)
+
+The admin `create` rule makes super-admin a **closed set** — only an existing active
+admin (or the founder at genesis) can add one, so there is no self-promotion and no side
+door — which is the platform-grade guarantee you can't get from a
+"service-role key." Tenant owners manage their own tenant; platform super-admins manage all;
+every write is still checked. See [admin-and-ownership.md](admin-and-ownership.md) for the
+bootstrap details, and [invariants.md](invariants.md) for `tenantTag` isolation
+so one tenant can never touch another's data.
+
+## Related
+
+- Hit `requires a keypair`/`401`/`403` or about to conclude "no access / blocked on the owner"? → the [access playbook](../../openapps-deploy/docs/access-playbook.md) (check identity + `openapps access` before surrendering)
+- Data-plane admin/owner patterns and a closed admin set → [admin-and-ownership.md](admin-and-ownership.md)
+- Top-level `roles` block (cross-collection read/write grants) → [roles.md](roles.md)
+- Sharing, linking, teams, login → [auth.md](../../openapps-frontend/docs/auth.md)
+- Tenant isolation invariants → [invariants.md](invariants.md#tenanttag--documents-carry-their-tenant)

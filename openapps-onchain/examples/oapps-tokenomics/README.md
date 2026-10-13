@@ -1,0 +1,77 @@
+# oApps tokenomics - verified reference policy
+
+The policy a **launched oApp ran** under the retired DBC model: a Meteora DBC launch (bonding-curve → DAMM v2
+graduation) with the **55% treasury / 25% creator-of-record / 20% Poof** fee split,
+expressed as an OpenApps policy. **Reference-only - this deploys
+nothing** (`bounded.json` has no `appId`; never `--create`/deploy it).
+
+> **HISTORICAL MODEL.** This example encodes the retired DBC 55/25/20 fee model.
+> The current OpenApps (openapps.xyz) venue uses fee model v2: a 24h CCA launch
+> with a fixed settlement waterfall on the raise, then a Meteora CP-AMM pool
+> whose 1% flat fee claims split 50% app reserve / 20% creator / 20% app fuel /
+> 10% OpenApps. See the current-model header in
+> [../../docs/oapps-tokenomics-fee-split.md](../../docs/oapps-tokenomics-fee-split.md).
+
+> **Current devnet status: unverified, not blocked.**
+> The earlier retired-authority blocker was cleared on 2026-07-29; the replacement DAMM v2 config is deployed on devnet and the deployed runtime targets it.
+> Keep this example reference-only until live acceptance closes, but nothing external prevents producing that evidence.
+
+Read [../../docs/oapps-tokenomics-fee-split.md](../../docs/oapps-tokenomics-fee-split.md)
+for the full walkthrough. This directory is the runnable artifact behind it.
+
+## Files
+
+- `policy.json` - the **design-correct** policy (16-arg `createMeteoraConfig` with
+  the 4 anti-snipe decay params). What a launched oApp ran under this historical model.
+- `policy.verify-today.json` - byte-identical **except** the launch config drops the
+  4 trailing decay params (12-arg form). It is a compatibility verification fixture, not devnet support evidence.
+- `keeper.js` - the scheduled keeper function body (fires the permissionless claim;
+  the distribute leg is left as commented app logic - see the doc's keeper section).
+- `bounded.json` - `protocol: realtime_mainnet`, reference-only.
+
+## Proof report (optional, experimental)
+
+```
+openapps verify --experimental                                   # uses policy.json (per bounded.json)
+openapps verify --experimental policy.verify-today.json
+```
+
+The policy itself is the reference; the report is opt-in ([formal verification](../../../openapps-backend/docs/formal-verification.md)).
+
+- **`policy.verify-today.json` (12-arg):** a green report covers the policy obligations and source contracts only.
+  It does not show that a Meteora transaction can execute on devnet.
+- **`policy.json` (16-arg):** current monorepo source accepts the four decay arguments through `paramCount: { min: 6, max: 16 }`.
+  If a deployed verifier reports `expects 6-12 argument(s)`, that endpoint is older than the source contract.
+  Either result remains separate from live network verification.
+
+## The 11 collections
+
+| Collection | Onchain | Role |
+|---|---|---|
+| `admins/$userId` | no | keeper/admin identity set |
+| `vaults/$vaultId` | yes | create the `treasury` + `feepool` PDAs (idempotent) |
+| `launch/$launchId` | yes | Tier-1 config: `feeAccount="treasury"` (55%), creator%=45 → feepool, decay 50%→3% |
+| `pools/$tokenId` | yes | mint + open the virtual pool |
+| `trades/$tradeId` | yes | trading passthrough |
+| `claims/$claimId` | yes | permissionless pre-migration claim of both native legs |
+| `distributions/$distId` | yes | Tier-2 pre-migration split: feepool → creator 5556 / Poof 4444 bps |
+| `dammClaims/$claimId` | yes | permissionless post-migration claim + leftover sweep |
+| `distributionsPost/$distId` | yes | Tier-2 post-migration 3-way split: treasury 5500 / creator 2500 / Poof 2000 bps |
+| `builds/$buildId` | no | fee-funded build allowance (`rollingSum` burn cap) |
+| `heartbeat/$id` | no | keeper heartbeat + `schedule` → `functions.keeper` (`actAs`) |
+
+## What's enforced vs trusted
+
+See the doc's [ENFORCED vs TRUSTED vs NEEDS LIVE PROOF](../../docs/oapps-tokenomics-fee-split.md#enforced-vs-trusted-vs-needs-live-proof)
+block. In short: the policy enforces **who may trigger** each write, that the **split bps are
+fixed literals**, and the **build-allowance cap**. Trusted (per design, no
+`conserve`): the plugin bodies and the caller-asserted claimed `amount`.
+Not derivable today: a fee-attributed total per recipient, because no primitive
+returns a per-mint claimed amount.
+Live proof must still confirm that the 45% creator leg actually lands in `feepool`
+(`createMeteoraVirtualPool` has no creator/source param).
+
+The placeholder constants (`OAPP_MINT`, `CREATOR`, `POOF`, `KEEPER`, `FOUNDER`) are
+swapped for the real mint, recipient wallets, and founder user id at launch.
+`FOUNDER` must stay a plain alphanumeric constant (the optional proof report
+rejects any other shape for its `authorityClosure` initial member).
