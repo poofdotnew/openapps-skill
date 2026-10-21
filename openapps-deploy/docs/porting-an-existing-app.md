@@ -31,14 +31,14 @@ Is it LLM/AI inference?
   -> ctx.ai, no provider key                                                 [openapps-backend ctx.ai]
 Is it a third-party API the app depends on?
   -> the capability ladder: live catalog action, callable through x402,
-     or request it - a key in ctx.secrets is the last resort for a PRIVATE
-     app and never allowed for an oApp                                       [ctx.services, capability ladder]
+     or request it - or keep the provider and its key in ctx.secrets
+     (not for an app headed to an APO on openapps.xyz)                       [ctx.services, capability ladder]
 Is it payments?
   -> OpenApps rails (crypto, provider payments); never your own Stripe key
-     in an oApp                                                              [openapps-onchain]
+     in an app headed to an APO                                              [openapps-onchain]
 Is it request-time SSR that must run a server?
-  -> host that server elsewhere and talk to OpenApps from it, or make the
-     frontend static; OpenApps serves static sites                            [openapps-frontend hosting]
+  -> Next.js: run it here, built with vinext; anything else: make the
+     frontend static, or host that server elsewhere                          [openapps-frontend server apps]
 ```
 
 ## The order that works
@@ -68,8 +68,8 @@ For every API the old app called with a key, run
 - `callable` - an x402-priced API; call it now through `ctx.services.invoke("X402_FETCH", { url, method, body, maxUsd })`. The relay pays per call; the app holds no key.
 - `requestable` (or nothing matched) - file it once: `openapps services request "<what you need>"`, follow it with `openapps services status`, and build without it until the Hub says it is live.
 
-A private app may keep a provider key in `ctx.secrets` as a stopgap; an app
-headed to openapps.xyz may not, and `openapps oapp preflight` will refuse on it.
+An app may keep a provider it already uses, with the key the owner sets in `ctx.secrets`; an app
+headed to an APO on openapps.xyz may not, and `openapps oapp preflight` will refuse on it.
 Never put a key in frontend code or a repo.
 
 ## Recipes by dependency
@@ -113,8 +113,9 @@ rules refuse was never admissible under the new policy.
   on a collection.
 - Background workers and cron become schedules.
 - The frontend stays where it is if it is static; deploy it with
-  `openapps site deploy dist --with-source`. If it needs request-time SSR, host
-  that server elsewhere and point it at OpenApps.
+  `openapps site deploy dist --with-source`. A Next.js app runs its server here
+  ([server apps](../../openapps-frontend/docs/server-apps.md)); any other request-time
+  server stays elsewhere and points at OpenApps.
 
 ### A backend that exists mainly to hold API keys
 

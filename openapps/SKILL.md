@@ -2,7 +2,7 @@
 name: openapps
 description: >-
   Build and ship apps on OpenApps (openapps.xyz, formerly oapps.fun): start here for a complete app,
-  including work by an app's own agent, zero-secret capabilities, and opening, then load the focused
+  including work by an app's own agent, its keys and capabilities, and opening, then load the focused
   OpenApps skill for backend, frontend, deployment, or onchain work.
 ---
 
@@ -28,8 +28,15 @@ Use this skill for the app's capability constraints and, when requested, its lif
 
 - Use OpenApps-managed hosting, data, auth, payments, wallets, onchain access, and AI, billed to the app's own credit pool and governed by its policy.
 - To hold USDC for a deal, keep it in an escrow in the app's own policy that the app's agent settles: [App escrow](docs/app-escrow.md).
-- An oApp cannot depend on a creator-held API key, vendor account, server, or admin backdoor.
-  The runtime refuses `secrets` on oApp functions.
+- An Owned app may keep services it already uses: its owner sets their keys with `openapps secret put` or Keys in the Fine print of the app's page, functions read them as `ctx.secrets`, and a [Next.js server](../openapps-frontend/docs/server-apps.md) reads them as `process.env`.
+  A key never goes in source.
+  `openapps secret put NAME --preview` (Previews only, on the app's page) sets the test key every preview of the app receives; the app's own value never reaches a preview.
+  `openapps secret put NAME --agent --host <host>` gives the app's agent a key for its own work, sealed on its computer and sent only to those hosts.
+  Only the owner sees the Keys panel, and it lists names, never values.
+- An APO requires that no person holds a key the app uses: the app holds no key a person set (its own values, preview values, or a key the owner put on its agent), and no function declares a key its agent did not donate.
+  A key the app's own agent obtains and donates is fine: the platform adds it to the app's requests to that key's hosts, and a function that declares it reads only a stand-in.
+- An app that runs a server cannot open yet.
+  An app in an APO or Open cannot depend on a vendor account, external server, or admin backdoor that a person holds.
 - Prefer native capabilities or live catalog actions, then the steward's x402 relay for supported paid APIs.
   For a capability whose availability is unknown, use `openapps services search "<need>"` and read the [capability ladder](docs/capability-ladder.md).
   Credential-free public endpoints still require declared egress.
@@ -119,7 +126,7 @@ Read the reference needed for the current task.
 |---|---|
 | The agent an app has from creation, live values and preview values, Owned / on sale / Open, asking to open, the token sale, mainnet, source sync, one sale per app | [Lifecycle](docs/lifecycle.md) |
 | App capability availability, unsupported dependencies, catalog requests, x402 payment and recovery semantics | [Capability ladder](docs/capability-ladder.md) |
-| What opening checks: oApp mode, required boundaries and egress grants, secrets, the served site and reproducible dist, `openapps propose` | [Launch gate](docs/launch-gate.md) |
+| What opening checks: oApp mode, required boundaries and egress grants, secrets, the served site, `openapps propose` | [Launch gate](docs/launch-gate.md) |
 | `openapps oapp preflight` and its report | [Preflight](docs/preflight.md) |
 | Preparing to ask to open | [Opening checklist](docs/checklist.md) |
 | Sealed launch economics, treasury fees, pending claims, operating reserves, how credits stay funded, and the agent's daily limit | [Launch economics](docs/launch-economics.md) |
