@@ -265,6 +265,5 @@ human's key (see [key-and-account-safety.md](../../openapps-deploy/docs/key-and-
 - [functions.md](functions.md) — the function the tick calls (the `@origin` auth gate, the live-call principal)
 - [service-keys.md](service-keys.md) — `runAs` (session-wide) + `actAs` (per-function override) funded identities
 - [backend-runtime.md](backend-runtime.md) — a long-running external agent through OpenApps
-- [agents-flue.md](agents-flue.md) — the Flue agent framework: a multi-step tool-use loop (vs an in-game NPC tick)
 - [guides/building-for-agents.md](building-for-agents.md) — a `@bounded-sh/server` keypair agent, per-agent key isolation
 - [billing.md](../../openapps/docs/billing.md) — account credits + per-account caps

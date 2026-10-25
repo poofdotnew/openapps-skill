@@ -247,4 +247,3 @@ openapps runtime --help
 - [functions.md](functions.md) — short functions
 - [secrets.md](secrets.md) — provider keys
 - [billing.md](../../openapps/docs/billing.md) — buckets and caps
-- [agents-flue.md](agents-flue.md) — multi-step agent loop
