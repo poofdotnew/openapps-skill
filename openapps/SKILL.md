@@ -129,6 +129,7 @@ Read the reference needed for the current task.
 | App capability availability, unsupported dependencies, catalog requests, x402 payment and recovery semantics | [Capability ladder](docs/capability-ladder.md) |
 | What opening checks: oApp mode, required boundaries and egress grants, secrets, the served site, `npx openapps propose` | [Launch gate](docs/launch-gate.md) |
 | `npx openapps oapp preflight` and its report | [Preflight](docs/preflight.md) |
+| Hide the platform widget on an Owned app (an Open app always shows it) | [Hide the widget](../openapps-frontend/docs/frontend-hosting.md#hide-the-widget) |
 | Preparing to ask to open | [Opening checklist](docs/checklist.md) |
 | Sealed launch economics, treasury fees, pending claims, operating reserves, how credits stay funded, and the agent's daily limit | [Launch economics](docs/launch-economics.md) |
 
