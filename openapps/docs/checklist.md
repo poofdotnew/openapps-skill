@@ -20,7 +20,7 @@
 - `npx openapps secret list` shows no key a person set, preview values included, and `npx openapps secret list --agent` shows no key you put on the agent: only keys the app's agent obtained and donated itself may remain.
 - Functions use `ctx.ai` / `ctx.services` / `ctx.bounded` only, with no fetches to key-authenticated endpoints.
 - Every external egress is declared and either credential-free, native, or relay-eligible.
-- Source rides the deploy (`sourcePush: true` in `bounded.json`), and the synced tree is the real, complete project, including the policy file its `bounded.json` names.
+- Source rides the deploy (`sourcePush: true` in `openapps.json`), and the synced tree is the real, complete project, including the policy file its `openapps.json` names.
 - The app serves a site (`oapp_app_release_site_missing` otherwise), built from THIS tree: byte-identical source files, or a build the source declares.
   Every `init({ appId })` literal names this app.
 - Every script the page runs ships inside the tree: dependencies come from npm and the build bundles them.

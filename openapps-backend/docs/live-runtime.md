@@ -619,7 +619,7 @@ npx openapps live deploy pong.live.ts --app-id <id>   # upload source; prints a 
 # Drive (or cold-start) a room from the CLI — queues an intent for the next tick
 # AND arms the loop if it isn't running. The CLI equivalent of bounded.live.intent.
 npx openapps live intent rooms/r1 --app-id <id> --intent '{"type":"join","name":"alice"}'
-npx openapps live status rooms/r1                     # uses bounded.json appId by default
+npx openapps live status rooms/r1                     # uses openapps.json appId by default
 ```
 
 Deploy uploads the module source and prints a version identifier. If a room
@@ -643,7 +643,7 @@ Drive intents from anywhere: the browser SDK (`bounded.live.intent(roomPath, int
 a server with `@bounded-sh/server`, or the **CLI** — `npx openapps live intent <roomPath>
 --app-id <id> --intent '<json>'` (great for cold-starting a room, scripts, and tests).
 Use `npx openapps live status <roomPath>` (or pass `--app-id <id>` to override
-`bounded.json`) or `live.status(roomPath)` when
+`openapps.json`) or `live.status(roomPath)` when
 debugging liveness: parked rooms report `running:false` plus `stopReason`,
 `generation`, loaded `etag`, open `connections`, and alarm/tick timestamps.
 `live.intent` and `live.subscribeView` re-arm a parked room; a terminal stopped

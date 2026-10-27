@@ -100,7 +100,7 @@ What the rules refuse was never admissible under the new policy.
 Porting is optional for an Owned app.
 An app may keep Supabase, Firebase or another backend it already uses and host only its frontend here.
 Client config such as a Supabase URL and anon key or a Firebase web config is public, not a secret: the build inlines `VITE_*` and `NEXT_PUBLIC_*` values, and no build sees a value set with `npx openapps secret put`.
-Put those values in `bounded.json` `build.env` with `npx openapps site env set NAME VALUE` (public names only): source sync leaves out every `.env` file, and `npx openapps site build` and an OpenApps agent's release build both add `build.env` to the build.
+Put those values in `openapps.json` `build.env` with `npx openapps site env set NAME VALUE` (public names only): source sync leaves out every `.env` file, and `npx openapps site build` and an OpenApps agent's release build both add `build.env` to the build.
 An OpenApps preview can use its own values instead, such as a separate Supabase project's: `npx openapps site env set --preview NAME VALUE` writes `build.previewEnv`, `npx openapps site build --preview` uses it, and a release from the preview swaps each preview value back to its `build.env` value, so the live app keeps the live values.
 Server-side keys (a service-role key, a Stripe secret) are set by the owner with `npx openapps secret put` and read at run time by functions and by a [server app](../../openapps-frontend/docs/server-apps.md).
 A database reached over HTTP works from both (Supabase JS, Neon serverless HTTP, PlanetScale, Turso).

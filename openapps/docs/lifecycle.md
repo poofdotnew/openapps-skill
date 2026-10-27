@@ -139,7 +139,7 @@ Use that venue's Devnet USDC and explorer links; a Devnet balance cannot pay for
 
 The agent works from the app's synced source, and so does the request to open: the app must serve a release whose source is synced.
 Source rides the deploy; there is no separate register or sync machinery.
-`npx openapps init` turns it on for every new project; an older project enables it once in `bounded.json`:
+`npx openapps init` turns it on for every new project; an older project enables it once in `openapps.json`:
 
 ```json
 { "sourcePush": true }

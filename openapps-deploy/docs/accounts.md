@@ -38,9 +38,9 @@ The saved session refreshes automatically when possible.
 
 ## Project selection
 
-`bounded.json` records `account.keySource: "web"` and may include a public email
+`openapps.json` records `account.keySource: "web"` and may include a public email
 login hint. It never stores access tokens or refresh tokens. Commit
-`bounded.json`; never commit `~/.bounded/web-session.json`.
+`openapps.json`; never commit `~/.bounded/web-session.json`.
 
 Before a sensitive release, confirm both identity and authorization:
 
@@ -61,7 +61,7 @@ An automation can set `BOUNDED_ACCOUNT_FILE` to an absolute path to a JSON accou
 {"keySource":"web","loginHint":"agent@example.com"}
 ```
 
-The file uses the same fields as `bounded.json.account` and selects the account for this process without rewriting the project's committed defaults.
+The file uses the same fields as `openapps.json.account` and selects the account for this process without rewriting the project's committed defaults.
 It contains selectors, never passwords, private keys, or session tokens; the selected account must already have a valid login or credentials in the normal store.
 `BOUNDED_PROJECT_ROOT` still points to the actual source project, so `npx openapps deploy` and `npx openapps tests run` find its policy and test files.
 Child processes must inherit both selectors and the same `HOME` to use the same account and files.

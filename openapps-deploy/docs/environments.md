@@ -50,7 +50,7 @@ identity to another.
 
 You do not have to rely on the base block for a named deploy: `npx openapps deploy`
 **derives the environment from the target app id** when you omit `--environment`.
-If `--app-id` (or the linked `bounded.json` app) matches exactly one
+If `--app-id` (or the linked `openapps.json` app) matches exactly one
 environment's `appId`, the CLI resolves that environment's constants and prints
 which one it picked; only a target that matches no environment falls through to
 the base block. So the base block is for local/unnamed targets, never a stand-in
@@ -139,9 +139,9 @@ npx openapps functions deploy --all --policy ./policy.json --environment staging
 npx openapps functions deploy --all --policy ./policy.json --environment production
 ```
 
-`policy.json` `--environment` and `bounded.json` `environment` are different
+`policy.json` `--environment` and `openapps.json` `environment` are different
 axes. `--environment staging` selects an entry from the policy and its app id.
-`bounded.json` `environment`, the global `--env` flag, and `BOUNDED_ENV` select
+`openapps.json` `environment`, the global `--env` flag, and `BOUNDED_ENV` select
 the OpenApps platform control plane. They do not select a staging or production
 entry from the policy.
 

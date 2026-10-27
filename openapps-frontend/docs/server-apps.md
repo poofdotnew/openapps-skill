@@ -18,7 +18,7 @@ Copying each one into `dist/client` (`/` as `index.html`, `/about` as `about.htm
 
 `npx openapps site deploy` accepts a folder with `_bounded_server/server.json` in place of `index.html`.
 Nothing under `_bounded_server/` is served to a browser.
-A `"build"` object in `bounded.json` (`{ "command": "npm run build", "output": "dist/client" }`) declares how the deployed folder is produced, and an OpenApps app's agent builds its releases with it.
+A `"build"` object in `openapps.json` (`{ "command": "npm run build", "output": "dist/client" }`) declares how the deployed folder is produced, and an OpenApps app's agent builds its releases with it.
 
 ## The `_bounded_server/` layout
 
@@ -26,7 +26,7 @@ A `"build"` object in `bounded.json` (`{ "command": "npm run build", "output": "
 - `_bounded_server/server.json` is `{ "version": 1, "main": "<entry module, relative to _bounded_server/>", "compatibilityDate": "YYYY-MM-DD", "compatibilityFlags": [...], "secrets": [...] }`.
 - `main`, `compatibilityDate` and `compatibilityFlags` come from `dist/server/wrangler.json` (`main`, `compatibility_date`, `compatibility_flags`).
 - The accepted flags are `nodejs_compat`, `nodejs_compat_v2`, `no_nodejs_compat_v2`, `nodejs_als` and `global_fetch_strictly_public`; any other flag refuses the deploy.
-- `secrets` lists at most 100 secret names the server reads; keep it equal to `server.secrets` in `bounded.json` (see [Secrets](#secrets)).
+- `secrets` lists at most 100 secret names the server reads; keep it equal to `server.secrets` in `openapps.json` (see [Secrets](#secrets)).
 
 A deploy with an invalid bundle is refused with `invalid_app_server` and a reason.
 
@@ -52,10 +52,10 @@ A build runs without the app's secrets, so a page that fetches with one while pr
 ## Secrets
 
 Server code reads the names `server.json` lists as `process.env.NAME`; a name it does not list is not in `process.env`.
-`bounded.json` declares the same list as `"server": { "secrets": ["STRIPE_SECRET_KEY"] }`; an OpenApps agent's release refuses a built server that reads a name the commit's `bounded.json` does not list.
+`openapps.json` declares the same list as `"server": { "secrets": ["STRIPE_SECRET_KEY"] }`; an OpenApps agent's release refuses a built server that reads a name the commit's `openapps.json` does not list.
 Names are upper case: `^[A-Z][A-Z0-9_]{0,63}$`.
 Names starting `NEXT_PUBLIC_`, `NUXT_PUBLIC_`, `VITE_`, `PUBLIC_`, `EXPO_PUBLIC_` or `REACT_APP_` are refused, because frameworks put those in browser bundles.
-Public values are not secrets: put them in `bounded.json` `build.env` (`npx openapps site env set NAME VALUE`), because source sync leaves out every `.env` file; `npx openapps site build` and an OpenApps agent's release build add them to the build.
+Public values are not secrets: put them in `openapps.json` `build.env` (`npx openapps site env set NAME VALUE`), because source sync leaves out every `.env` file; `npx openapps site build` and an OpenApps agent's release build add them to the build.
 The owner sets each value with `npx openapps secret put NAME` ([secrets](../../openapps-backend/docs/secrets.md)); a new value reaches the server within 30 seconds, with no deploy.
 In an APO every listed name must be a key the app's OpenApps agent donated: the server reads a stand-in, and the real key is added only to requests to the hosts it was donated for.
 Deploying a server that lists secrets needs the same permission as deploying functions.

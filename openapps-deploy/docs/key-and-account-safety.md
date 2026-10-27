@@ -10,7 +10,7 @@ an existing key-owned app. Normal projects use the web account selected by
 > key like an SSH private key: back it up, run `npx openapps link` on day one, or share
 > a backup owner. In web account mode, run `npx openapps login`; the CLI opens the
 > hosted sign-in page and uses `~/.bounded/web-session.json` instead
-> of a local key. Public `bounded.json` and `.bounded/app.json` are safe to commit;
+> of a local key. Public `openapps.json` and `.bounded/app.json` are safe to commit;
 > credentials and web-session files are not.
 
 ## 1. Wallet credentials own apps in wallet/keypair mode
@@ -66,7 +66,7 @@ Automation must compare the enum instead of parsing the descriptive label.
 
 ## 3. Account source resolution
 
-The public `bounded.json` can select `global`, `project`, `profile`, `env`, or
+The public `openapps.json` can select `global`, `project`, `profile`, `env`, or
 `web`; it never stores a private key or web token.
 
 | Config | Auth material |
@@ -86,7 +86,7 @@ wallet rather than a local key (see the **openapps-onchain** skill). When a
 wallet/keypair source is selected, keypair commands use that source, and
 `BOUNDED_PRIVATE_KEY` is the higher-precedence CI/automation override.
 
-With no `bounded.json`, projectless control-plane commands that take `--app-id`
+With no `openapps.json`, projectless control-plane commands that take `--app-id`
 also default to the saved web session. They do not discover or create the global
 key implicitly. Set `BOUNDED_PRIVATE_KEY`, or choose a wallet source in a
 project, only when wallet mode is intentional.
@@ -106,7 +106,7 @@ repo-local isolated key, run `npx openapps account use --project`; the key lives
 existing current project. The public config and marker always record *which*
 source was used (§4).
 
-**`npx openapps account use ...` EDITS `bounded.json`.** The account source lives in
+**`npx openapps account use ...` EDITS `openapps.json`.** The account source lives in
 the committed project config, so switching is a working-tree change other agents
 and reviewers will see. Commit it if the project should move, revert it if the
 switch was only for one command — or run the one command from a throwaway dir
@@ -133,7 +133,7 @@ resolved path — trust the path, not the word.
 ## 3b. Deploy denied? You may be using the wrong identity — try the other one first
 
 A control-plane command that fails with **403 `site_control_denied`** almost never
-means "you can't deploy this." It means **the identity your `bounded.json` account
+means "you can't deploy this." It means **the identity your `openapps.json` account
 source points at is not an owner/admin of that app** — and the CLI uses *only that
 one source*. It does **not** fall back to your other signed-in identities.
 
@@ -167,13 +167,13 @@ python3 -c "import json;d=json.load(open('$HOME/.bounded/web-session.json'));pri
 ```
 
 Then deploy under the other identity. To avoid mutating a **shared/committed**
-`bounded.json` (a co-agent may read it mid-window), deploy from a throwaway dir
+`openapps.json` (a co-agent may read it mid-window), deploy from a throwaway dir
 whose config selects the other source — the app is unchanged, only *your* local
 auth differs:
 
 ```bash
 mkdir -p /tmp/deploy-as-web && cd /tmp/deploy-as-web
-cat > bounded.json <<JSON
+cat > openapps.json <<JSON
 { "appId": "<TARGET_APP_ID>", "environment": "production", "account": { "keySource": "web" } }
 JSON
 npx openapps site deploy /abs/path/to/dist      # uses ~/.bounded/web-session.json (the web login)
@@ -191,15 +191,15 @@ fix is usually just switching sources. (This does **not** apply to a
 pointless - amend the boundary via the access playbook instead. Nor to a
 `402 deploy_credit_insufficient`, which is billing: add credit, then retry.)
 
-## 4. Public project markers — `bounded.json` and `.bounded/app.json`
+## 4. Public project markers — `openapps.json` and `.bounded/app.json`
 
-`npx openapps init` writes public `bounded.json`; `npx openapps deploy --create` records the
+`npx openapps init` writes public `openapps.json`; `npx openapps deploy --create` records the
 app id there and also writes legacy-compatible `.bounded/app.json`. Both are
 **PUBLIC** — they record the app, env, owner identity, and account source, but
 **never the private key, web token, or refresh token**. Commit them: they tell
 teammates and agents which app/account this folder maps to.
 
-`bounded.json` is the first file agents should read:
+`openapps.json` is the first file agents should read:
 
 ```json
 {
@@ -261,7 +261,7 @@ raw secret and **keeps the public marker committable**:
 
 ```gitignore
 # OpenApps (managed) — never commit private keys or secrets.
-# Public markers bounded.json and .bounded/app.json ARE safe to commit; everything below is not.
+# Public markers openapps.json and .bounded/app.json ARE safe to commit; everything below is not.
 .bounded/credentials
 .bounded/*.key
 *.key
@@ -271,7 +271,7 @@ raw secret and **keeps the public marker committable**:
 !.env.example
 ```
 
-- `bounded.json` and `.bounded/app.json` (the public markers) are **deliberately
+- `openapps.json` and `.bounded/app.json` (the public markers) are **deliberately
   NOT ignored** — commit them.
 - A project key, any dropped keypair file, and a `.env` holding `BOUNDED_PRIVATE_KEY`
   are all ignored so you can't accidentally commit a secret. The web-session file
@@ -364,7 +364,7 @@ loss.
 
 When you (an AI agent) operate OpenApps on a human's behalf:
 
-1. **Read `bounded.json` first.** It is the public project source of truth for
+1. **Read `openapps.json` first.** It is the public project source of truth for
    `appId`, environment, policy path, and account source. If absent, fall back to
    `.bounded/app.json`.
 2. **If `account.keySource` is `web`, use web auth.** Run
@@ -374,10 +374,10 @@ When you (an AI agent) operate OpenApps on a human's behalf:
    `env`), SUGGEST `npx openapps link` on first `deploy --create`** or share a backup
    owner. Confirm where the selected key lives.
 4. **Tell the human which account source owns/administers the app**
-   (`bounded.json` `account.keySource` / marker `ownerKeySource`) **and what the
+   (`openapps.json` `account.keySource` / marker `ownerKeySource`) **and what the
    public owner identity is** (`owner`). For wallet mode, they need to know which
    key to back up.
-5. **Never echo, print, or commit secrets.** Rely on public `bounded.json` /
+5. **Never echo, print, or commit secrets.** Rely on public `openapps.json` /
    `.bounded/app.json` for provenance. Credentials files, `BOUNDED_PRIVATE_KEY`,
    and `~/.bounded/web-session.json` are secrets — keep them out of logs, chat,
    and the repo.
@@ -402,8 +402,8 @@ npx openapps whoami        # auto-creates selected wallet credentials; note the 
 npx openapps link          # attach the wallet key to your web account
 # ... back up the selected credentials file somewhere safe
 
-npx openapps deploy --create --name my-app       # records appId in bounded.json + .bounded/app.json
-git add bounded.json .bounded/app.json .gitignore      # commit PUBLIC markers, not keys
+npx openapps deploy --create --name my-app       # records appId in openapps.json + .bounded/app.json
+git add openapps.json .bounded/app.json .gitignore      # commit PUBLIC markers, not keys
 ```
 
 ## Returning / new machine (don't spawn an accidental wallet identity)
@@ -432,7 +432,7 @@ npx openapps whoami        # should show your existing web identity
 
 After A, B, or C, `npx openapps whoami` should show the wallet owner address that
 matches `owner` in your project's `.bounded/app.json`. After D, it should show the
-same web identity. In all cases it should also show the `bounded.json`
+same web identity. In all cases it should also show the `openapps.json`
 app/account context for configured projects.
 
 ## Related

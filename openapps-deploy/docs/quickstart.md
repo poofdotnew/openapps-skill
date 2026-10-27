@@ -16,7 +16,7 @@ If no valid OpenApps web session exists, the CLI opens hosted browser login and
 returns to the terminal after sign-in. `init` then creates:
 
 - `policy.json`, the governed backend policy
-- `bounded.json`, public project configuration safe to commit, with `"sourcePush": true` so every deploy also syncs the project source (see [source-sync.md](source-sync.md))
+- `openapps.json`, public project configuration safe to commit, with `"sourcePush": true` so every deploy also syncs the project source (see [source-sync.md](source-sync.md))
 - `.gitignore` entries for local OpenApps credentials
 
 No separate authentication command is required before `npx openapps init`.
@@ -32,7 +32,7 @@ anything changes; fix what the message names and run it again. Never retry
 `npx openapps deploy --create` on an ambiguous outcome, because it can create another
 app; see the incident router in this skill's SKILL.md.
 
-The create deploy records the new `appId` in `bounded.json`. Later policy
+The create deploy records the new `appId` in `openapps.json`. Later policy
 releases use:
 
 ```bash
@@ -69,7 +69,7 @@ The app having its own agent does not by itself require an AI run or an AI-credi
 This workflow differs from the app's own agent, which follows its runtime instructions for previews and releases.
 
 Work from the current published source (`npx openapps clone <app-id> <directory>`, or `npx openapps pull` in an existing clean clone), review the local diff, and run the app's build and relevant checks.
-Confirm the target and identity with `bounded.json`, `npx openapps whoami`, and `npx openapps access --app-id <app-id>`.
+Confirm the target and identity with `openapps.json`, `npx openapps whoami`, and `npx openapps access --app-id <app-id>`.
 Then publish the built frontend with its matching source:
 
 ```bash
@@ -113,7 +113,7 @@ testing. Test one intended user flow and one policy-denied boundary.
 
 ## Existing project
 
-Read `bounded.json` first. It identifies the environment, app, policy path, and
+Read `openapps.json` first. It identifies the environment, app, policy path, and
 developer account source. Do not create a replacement app merely because the
 current account lacks access; use `npx openapps whoami`, `npx openapps access`, and the
 [access playbook](access-playbook.md).

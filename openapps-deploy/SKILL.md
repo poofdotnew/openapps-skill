@@ -3,7 +3,7 @@ name: openapps-deploy
 description: >-
   Ship and configure an OpenApps app: CLI setup, browser-backed developer login,
   deploy, hosted frontend publishing, environments, source sync,
-  domains, bounded.json, collaborators, and release recovery. Part of the
+  domains, openapps.json, collaborators, and release recovery. Part of the
   OpenApps skill family.
 ---
 
@@ -24,7 +24,7 @@ npx openapps deploy --create --name my-app
 ```
 
 `npx openapps init` reuses a saved web session or opens hosted browser login. It
-writes public `bounded.json` (with `"sourcePush": true`, so deploys sync the
+writes public `openapps.json` (with `"sourcePush": true`, so deploys sync the
 project source) and `policy.json`; credentials never belong in either file.
 
 ## Task router
@@ -104,8 +104,8 @@ account profile, or recovery of an existing key-owned app.
 
 ## Release rules
 
-- Read `bounded.json` first in an existing app.
-- The `policy.json` that `bounded.json` names is what deploys.
+- Read `openapps.json` first in an existing app.
+- The `policy.json` that `openapps.json` names is what deploys.
   Before running a script that generates it, diff its output against the committed file; if it drops or changes anything you did not mean to change, the generator is stale: update it or delete it, never deploy its output.
 - `npx openapps deploy` validates and compiles the policy and refuses an invalid one before anything changes; there is no separate proof step.
 - After a release-critical deploy, use

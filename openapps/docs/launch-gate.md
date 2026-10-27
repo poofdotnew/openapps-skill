@@ -24,7 +24,7 @@ These are requirements, not advice:
 | capability grants | `service:cap` and `service:x402` in a locked `boundaries.egress` entry, so the app can call live catalog actions and pay x402-priced APIs through the relay | `oapp_opening_capability_grants_missing` |
 | function egress | each function's egress names only entries an app-wide boundary declares and repeats every `service:` entry exactly; no function enables `ctx.sandbox` | `oapp_opening_egress_not_steward_owned` |
 | the deployed runtime | the committed runtime config carries this exact policy and allows exactly the hosts the boundaries declare; redeploy the policy when they differ | `oapp_opening_safety_unavailable`, `oapp_opening_egress_not_steward_owned` |
-| the policy in source | the synced source carries the policy file its `bounded.json` names (`"policy"`, `openapps/policy.json` when unset) | `oapp_creator_policy_missing_from_source` |
+| the policy in source | the synced source carries the policy file its `openapps.json` names (`"policy"`, `openapps/policy.json` when unset) | `oapp_creator_policy_missing_from_source` |
 
 The other conditions of a request to open (the owner asking, an app on mainnet under OpenApps custody, a public app, a final proceeds split, Automatic, one sale) are in [the lifecycle](lifecycle.md#what-asking-to-open-requires).
 
@@ -57,7 +57,7 @@ The request to open, `npx openapps oapp preflight`, and a source-synced `npx ope
 - **static**: every file you deploy is byte-identical to a text file in your source tree.
   Only inert assets (images, fonts, audio, video, `.pdf`) are exempt from the match; anything served as code or markup (`.js`, `.html`, `.css`, `.svg`, `.wasm`) must be in your source verbatim, whatever its encoding.
   Hand-written pages deployed as-is land here automatically.
-- **built**: your source declares how the frontend is produced: a `"build"` object in `bounded.json` (`{"command": "npm run build", "output": "dist"}`) or a `package.json` `build` script.
+- **built**: your source declares how the frontend is produced: a `"build"` object in `openapps.json` (`{"command": "npm run build", "output": "dist"}`) or a `package.json` `build` script.
   The served bytes then differ from the source files, and the declared build is what reproduces them.
 
 The source must also be synced (`--with-source` / `sourcePush: true`), and the preflight is not READY while the synced source is older than the served site (`source_not_synced`, `source_stale`).

@@ -3,7 +3,7 @@
 The policy a **launched oApp ran** under the retired DBC model: a Meteora DBC launch (bonding-curve → DAMM v2
 graduation) with the **55% treasury / 25% creator-of-record / 20% Poof** fee split,
 expressed as an OpenApps policy. **Reference-only - this deploys
-nothing** (`bounded.json` has no `appId`; never `--create`/deploy it).
+nothing** (`openapps.json` has no `appId`; never `--create`/deploy it).
 
 > **HISTORICAL MODEL.** This example encodes the retired DBC 55/25/20 fee model.
 > The current OpenApps (openapps.xyz) venue uses fee model v2: a 24h CCA launch
@@ -27,12 +27,12 @@ for the full walkthrough. This directory is the runnable artifact behind it.
   4 trailing decay params (12-arg form). It is a compatibility verification fixture, not devnet support evidence.
 - `keeper.js` - the scheduled keeper function body (fires the permissionless claim;
   the distribute leg is left as commented app logic - see the doc's keeper section).
-- `bounded.json` - `protocol: realtime_mainnet`, reference-only.
+- `openapps.json` - `protocol: realtime_mainnet`, reference-only.
 
 ## Proof report (optional, experimental)
 
 ```
-npx openapps verify --experimental                                   # uses policy.json (per bounded.json)
+npx openapps verify --experimental                                   # uses policy.json (per openapps.json)
 npx openapps verify --experimental policy.verify-today.json
 ```
 

@@ -221,7 +221,7 @@ Its status and error body distinguish a missing synchronized repository from a
 temporary source backend failure. Then enable source push and redeploy:
 
 ```bash
-# bounded.json: { "sourcePush": true }   — or one-off:
+# openapps.json: { "sourcePush": true }   — or one-off:
 npx openapps site deploy ./dist --with-source
 ```
 

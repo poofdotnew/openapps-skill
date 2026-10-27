@@ -7,7 +7,7 @@ An ordinary `npx openapps site deploy ./dist` uploads only the built static arti
 
 ## Enable it
 
-`npx openapps init` writes it into every new project's `bounded.json`:
+`npx openapps init` writes it into every new project's `openapps.json`:
 
 ```json
 { "sourcePush": true }
@@ -111,7 +111,7 @@ The remote-edit era CLI surface is gone: `npx openapps dev`, `npx openapps dashb
 localhost dashboard daemon and its `/apps/:appId/propose|validate|deploy` API,
 and the `npx openapps live-edit` command group (`register`/`validate`/`deploy`, the
 `liveEdit.artifacts`/`artifactPush` knobs). `npx openapps edit "<prompt>"` is the live
-prompt-build command. A `liveEdit` block in an old `bounded.json` is ignored with a
+prompt-build command. A `liveEdit` block in an old `openapps.json` is ignored with a
 deprecation notice; `liveEdit.artifactPush: true` is honored as `sourcePush:
 true`. Editing happens in your working tree with your own tools; deploying and
 source sync are the only cloud writes.
