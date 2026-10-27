@@ -1,7 +1,7 @@
 # App-user auth quickstart
 
 This is authentication for people using the deployed app. It is separate from
-the developer web account used by `openapps init` and the CLI.
+the developer web account used by `npx openapps init` and the CLI.
 
 ## Keep the default
 

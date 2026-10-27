@@ -1,7 +1,7 @@
 # App-user authentication
 
 This page is about people signing in to a deployed app. The developer account
-used by `openapps init` and the CLI is separate; see
+used by `npx openapps init` and the CLI is separate; see
 [developer accounts](../../openapps-deploy/docs/accounts.md). Do not expose CLI
 sessions or developer credentials to app users.
 
@@ -9,7 +9,7 @@ OpenApps has **two distinct identity systems**. Don't conflate them:
 
 | | Who | What it is | Where it shows up |
 |---|---|---|---|
-| **CLI/admin auth** | you / your agent | normally an OpenApps web account session selected by `openapps init`; local signing is an advanced alternative | owns/administers apps and is documented in the deploy skill |
+| **CLI/admin auth** | you / your agent | normally an OpenApps web account session selected by `npx openapps init`; local signing is an advanced alternative | owns/administers apps and is documented in the deploy skill |
 | **End-user auth** | your app's users | OpenApps Auth (email OTP + OAuth/social + optional text OTP). **Turnkey-native auth with eager embedded-wallet provisioning is the default**, so supported email/social users carry both `@user.id` and `@user.address` without an `authMode` or `auth.wallets` override. Browser guests use a device keypair; a connected Solana wallet (`walletLogin`) is the bring-your-own companion. | `@user.id` / `@user.address` / `@user.email` / `@user.isAnonymous` in policy rules |
 
 New apps use an embedded wallet specific to that account and app, while existing apps keep their existing shared wallet.
@@ -101,11 +101,11 @@ but not the credential form.
 
 **Hitting an origin error?** Hosted auth rejects an unregistered redirect with
 `redirect_uri origin is not a registered origin for this app`. Fix it by registering
-the app's web origin — claim a vanity slug (`openapps domains slug <name> --app-id <id>`
-→ `<slug>.bounded.page`) or add a custom domain (`openapps domains add <host> --app-id
+the app's web origin — claim a vanity slug (`npx openapps domains slug <name> --app-id <id>`
+→ `<slug>.bounded.page`) or add a custom domain (`npx openapps domains add <host> --app-id
 <id>`); both wire `allowedOrigins` automatically. `localhost` is **not** allowed
 automatically — a local dev server's origin must be registered too, port-exact:
-`openapps domains origins add http://localhost:5173 --app-id <id>`. See
+`npx openapps domains origins add http://localhost:5173 --app-id <id>`. See
 [develop on localhost](building-a-webapp.md#develop-on-localhost).
 
 ### Login-method matrix — the whole menu
@@ -118,7 +118,7 @@ automatically — a local dev server's origin must be registered too, port-exact
 | **unified widget** (email + social + optional wallet) | `openBoundedWidget({methods:["email","google"], wallet:true})` | account id (the wallet lane yields the user's real wallet) | Turnkey for email/social; connected wallet for wallet lane | in-app Shadow-DOM card; Turnkey email OTP is the default |
 | **guest (browser)** | `signInAnonymously()` | durable device id | device keypair address (guest auth remains offchain-only) | zero-friction; `isAnonymous: true`; policy opt-in `auth.anonymous`; requires WebCrypto Ed25519 + IndexedDB |
 | **WALLET (Solana), bring-your-own** | `init({authMethod:"phantom", walletLogin:true})` → `login()` | **real wallet** | **the wallet** | the companion login for users who already have a wallet — see below |
-| **CLI/admin** | `openapps login` / keypair | web account or keypair | keypair addr | builder identity, not end-user |
+| **CLI/admin** | `npx openapps login` / keypair | web account or keypair | keypair addr | builder identity, not end-user |
 
 ### Solana wallet login (bring your own)
 
@@ -154,7 +154,7 @@ Support is determined by capabilities exposed to the page, not a wallet's displa
 Browser guest accounts sign the same text with their device key; the CLI, the server SDK, and React Native keep the legacy challenge because they send no browser Origin.
 
 **Two knobs, not one.** `walletLogin` is the CLIENT opt-in; the issuer additionally refuses to mint an external-wallet session unless the app's policy allows it, so a deployed `"auth": { "wallets": true }` is a prerequisite (without it login fails with "wallet login is not enabled for this app").
-The browser origin matters too: SIWS binds to it, so a non-first-party host (a tunnel, a preview domain) must be registered with `openapps domains origins add https://<host> --app-id <id> --env <env>`.
+The browser origin matters too: SIWS binds to it, so a non-first-party host (a tunnel, a preview domain) must be registered with `npx openapps domains origins add https://<host> --app-id <id> --env <env>`.
 
 ```jsonc
 // policy.json

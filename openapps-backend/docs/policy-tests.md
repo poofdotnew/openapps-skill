@@ -24,12 +24,12 @@ actually trips at write 21, the non-owner is actually denied.
   real transfer, catches that.
 - **After every fix.** Once a test exposes a hole and you strengthen the rule,
   keep the test so the fix cannot regress silently.
-- **The AI edit loop:** edit `policy.json` → `openapps tests run` → read the
-  denial verbatim → fix the policy → `openapps deploy`.
+- **The AI edit loop:** edit `policy.json` → `npx openapps tests run` → read the
+  denial verbatim → fix the policy → `npx openapps deploy`.
 
-`openapps tests run` executes the local policy in a fresh throwaway sandbox and does not modify the target app's deployed policy.
+`npx openapps tests run` executes the local policy in a fresh throwaway sandbox and does not modify the target app's deployed policy.
 It still needs an existing app ID for authentication and plan context.
-For a brand-new project with no app ID, create and record the app first (`openapps deploy --create`), then run the policy tests before the next deployment.
+For a brand-new project with no app ID, create and record the app first (`npx openapps deploy --create`), then run the policy tests before the next deployment.
 You may instead pass `--app-id` for another app you administer when you need the local-policy test loop before creating the new app.
 
 ## File format
@@ -113,7 +113,7 @@ With an onchain `create` rule of `@newData.author == @user.address`, that write 
 | `mock` | `function`, `returns` | Stub a plugin function call for all later steps (args ignored). Write the name exactly as a policy hook does - `@AccountPlugin.createAccount`. The `@`, the dots, and case are normalized away, so `accountplugin_createaccount` is equivalent. A name that is not plugin-function shaped fails the file at validation. |
 | `ensure` | `expr`, `then?` | If `expr` is truthy, run the nested `then` steps; else skip. Without `then`, behaves like `expect` (idempotency helper). |
 | `expect` | `expr` \| `left`+`right` \| `not` | Assert against current sandbox state. Mutually exclusive: `expr` must be truthy; `left`/`right` compare by `JSON.stringify` equality; `not` must be falsy. `get()` inside `expr` reads that sandbox state with read rules skipped, so it cannot prove a denied read; prove a denied read with a second real session. Write and delete denials stay on `shouldFail`. |
-| `invoke` | `function`, `args?`, `shouldFail?` | Run a policy-declared app function in the sandbox as the current actor. The function's `auth` rule is enforced (same actor/clock/mocks); its declared `actAs` applies; its `ctx.bounded` writes run through the real rules + invariants. `shouldFail` passes on an auth denial OR a function error. `openapps tests run` sends your local `functions/*.ts` sources along automatically (deployed-policy runs have no sources, so `invoke` needs the local-policy loop). |
+| `invoke` | `function`, `args?`, `shouldFail?` | Run a policy-declared app function in the sandbox as the current actor. The function's `auth` rule is enforced (same actor/clock/mocks); its declared `actAs` applies; its `ctx.bounded` writes run through the real rules + invariants. `shouldFail` passes on an auth denial OR a function error. `npx openapps tests run` sends your local `functions/*.ts` sources along automatically (deployed-policy runs have no sources, so `invoke` needs the local-policy loop). |
 | `snapshot` | `name`, `expectSame?` | Capture the sandbox's FULL document state under a name. With `expectSame`, assert it is identical (per-path document data) to a previously captured snapshot — the mismatch report names the added/removed/changed paths. |
 
 `shouldFail: true` on any write op means the step **passes if the write is
@@ -144,16 +144,16 @@ authority are withheld from sandbox runs. Bootstrap/seeding mode and onchain
 ## Running
 
 ```bash
-openapps tests run                                    # policy-tests/*.json against LOCAL policy.json
-openapps tests run --deployed-policy                  # against the app's already-deployed policy instead
-openapps tests run --file test-votes.json --file test-admins.json
-openapps tests push                                   # attach local files to the app (merge by fileName)
-openapps tests push --replace                         # overwrite the app's attached set
-openapps tests list                                   # what's attached
-openapps tests pull --dir policy-tests                # fetch attached files (won't overwrite without --force)
+npx openapps tests run                                    # policy-tests/*.json against LOCAL policy.json
+npx openapps tests run --deployed-policy                  # against the app's already-deployed policy instead
+npx openapps tests run --file test-votes.json --file test-admins.json
+npx openapps tests push                                   # attach local files to the app (merge by fileName)
+npx openapps tests push --replace                         # overwrite the app's attached set
+npx openapps tests list                                   # what's attached
+npx openapps tests pull --dir policy-tests                # fetch attached files (won't overwrite without --force)
 ```
 
-`openapps tests run` defaults to `policy-tests/`, sends files inline with your
+`npx openapps tests run` defaults to `policy-tests/`, sends files inline with your
 **local** `policy.json` as the policy under test — the pre-deploy loop, no
 push needed. Human output is per-file PASS/FAIL with the failing step's
 denial printed verbatim; exit code is 1 on any failure. `--json` gives the
@@ -193,7 +193,7 @@ deploy`.
 - [testing-authed-apps.md](testing-authed-apps.md) — end-to-end browser tests
   against a real deployed app, a different layer than policy tests
 - [cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — full
-  `openapps tests` flags
+  `npx openapps tests` flags
 
 ## A rejection for the wrong reason is a FALSE GREEN
 

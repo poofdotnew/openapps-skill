@@ -23,7 +23,7 @@ behaves exactly as before.
 > deploy — nothing to seed. The chicken-and-egg only affects the **data-driven**
 > `admins/$userId` collection (keyed by `@user.id`, where membership is a row you
 > must write); its
-> genesis idiom (`@const.FOUNDER` clause + `openapps data set` from the founder)
+> genesis idiom (`@const.FOUNDER` clause + `npx openapps data set` from the founder)
 > is in [admin-and-ownership.md](admin-and-ownership.md#bootstrapping-the-first-admin--the-genesis-flow).
 
 ## Shape
@@ -96,7 +96,7 @@ console needs, with zero god-mode code path. The ownership gates key on
 `@user.id` (the universal stable identity), so they hold for wallet **and**
 email/social logins alike. `@const.ADMIN` is the admin's `@user.id`, not a wallet
 address — a wallet login's id equals its address, so existing wallet-based admin
-values keep working. Pairs with the local dashboard template (`openapps dev`).
+values keep working. Pairs with the local dashboard template (`npx openapps dev`).
 
 ## Common mistakes
 

@@ -187,7 +187,7 @@ validated `admins` collection, and the active off-switch pattern:
 Distinguish two questions. The above is the **data plane** ("who may moderate the
 data"). The separate **control plane** — who may deploy policy/UI, manage billing,
 share access, run cloud edits, or act as a **platform super-admin** across tenants —
-is the `access` block + `openapps share --role`. If the app has collaborators, external
+is the `access` block + `npx openapps share --role`. If the app has collaborators, external
 contributors, or is a multi-tenant platform, read
 [access-control.md](access-control.md) and add an `access` block; for a plain B2C app
 the creator is `owner` and you need none of it.
@@ -289,7 +289,7 @@ Decide with [functions-when-to-use.md](functions-when-to-use.md). Then add:
 ### Step 8 — Test, fix, deploy
 
 ```bash
-openapps tests run
+npx openapps tests run
 ```
 
 Write an allow and a deny test for every security seam
@@ -304,7 +304,7 @@ Write an allow and a deny test for every security seam
 
 Never weaken a rule to make a test pass — the failing test is a write
 production would have accepted. Strengthen the expression, rerun the tests until
-clean, run the [quality checklist](quality-checklist.md), then `openapps deploy`.
+clean, run the [quality checklist](quality-checklist.md), then `npx openapps deploy`.
 
 ---
 

@@ -1,17 +1,17 @@
 # Preflight before you ask to open
 
-**What's in here:** `openapps oapp preflight`, the dry run of what the request to open reads off the app, with the capability ladder for every dependency it names. Part of the **openapps** skill; the compact rules and the router are in [../SKILL.md](../SKILL.md).
+**What's in here:** `npx openapps oapp preflight`, the dry run of what the request to open reads off the app, with the capability ladder for every dependency it names. Part of the **openapps** skill; the compact rules and the router are in [../SKILL.md](../SKILL.md).
 
 ## What preflight runs (`openapps oapp preflight`)
 
 An app opens in place: the app that goes on sale is the app as it is deployed, with its data, so the checks read that app and nothing else.
 The request to open runs one safety pass on it and refuses on the first finding.
 It also refuses an app with no synced source, an app that serves no site, and an app whose agent holds a key its creator put there (`agent_secret_person_held`); the preflight does not report the last one.
-`openapps oapp preflight` (`GET /app/<mainAppId>/oapp-preflight`) runs the same reads as a dry run, as the app's owner, and changes nothing:
+`npx openapps oapp preflight` (`GET /app/<mainAppId>/oapp-preflight`) runs the same reads as a dry run, as the app's owner, and changes nothing:
 
 ```
-openapps oapp preflight            # READY, or every finding the request to open would be refused on
-openapps oapp preflight --json     # the report as one document (exit 1 when it is not READY)
+npx openapps oapp preflight            # READY, or every finding the request to open would be refused on
+npx openapps oapp preflight --json     # the report as one document (exit 1 when it is not READY)
 ```
 
 It reads the deployed policy, the committed runtime config, the synced source at its head, every served site file, the deployed function code, and the backend manifest.
@@ -32,7 +32,7 @@ A deployed function whose code cannot be read at its pin fails the preflight wit
 - `native` - the runtime already provides it (`ctx.ai`, `ctx.email`, files, auth, ...)
 - `live` - a catalog action: `ctx.services.invoke("<slug>", args, { idempotencyKey })`
 - `callable` - an x402-priced API, callable now through `X402_FETCH`
-- `request` - not on OpenApps yet: `openapps services request "<what you need>"`
+- `request` - not on OpenApps yet: `npx openapps services request "<what you need>"`
 
 The report is READY only when no finding is blocking, the source is synced and current with the served site, and the dist is `static` or `built`: then nothing the preflight reads would refuse the request.
 The request also checks what the preflight does not read: the caller, the app's network and custody, the Public switch, Automatic, the proceeds split, the slug, one sale per app, and the declaration itself (see [what asking to open requires](lifecycle.md#what-asking-to-open-requires)).

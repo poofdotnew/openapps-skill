@@ -13,13 +13,13 @@ An app with ad-hoc checks in function code reads as a rug risk.
 
 An app opens in place, so the request to open reads the app as it is deployed: its policy, its committed runtime config, its synced source, every served site file, its deployed function code, and its backend manifest.
 It runs one safety pass (`oapps.opening-safety.v1`) over them and refuses on the first finding.
-`openapps oapp preflight` runs the same pass as a dry run and lists every finding ([preflight](preflight.md)).
+`npx openapps oapp preflight` runs the same pass as a dry run and lists every finding ([preflight](preflight.md)).
 These are requirements, not advice:
 
 | What | Required | Refusal |
 |---|---|---|
 | oApp mode | `"oapp": true` at the top of the policy when it declares functions or boundaries; oApp mode requires a declared egress boundary | `oapp_opening_egress_not_steward_owned` |
-| no person-held or leaked keys | the app holds no key a person set (its own values, its preview values, or a key the creator put on its agent with `openapps secret put --agent`), every secret a function or the app's [server](../../openapps-frontend/docs/server-apps.md) declares is one the app's OpenApps agent donated, and no credential-shaped string sits in the policy, the runtime config, the synced source, the served site, the deployed function code, or the backend manifest: every served byte is public once the app opens | `oapp_opening_secret_surface_invalid` |
+| no person-held or leaked keys | the app holds no key a person set (its own values, its preview values, or a key the creator put on its agent with `npx openapps secret put --agent`), every secret a function or the app's [server](../../openapps-frontend/docs/server-apps.md) declares is one the app's OpenApps agent donated, and no credential-shaped string sits in the policy, the runtime config, the synced source, the served site, the deployed function code, or the backend manifest: every served byte is public once the app opens | `oapp_opening_secret_surface_invalid` |
 | `boundaries.egress` | a list of 1 to 64 boundaries with unique ids, each declaring `"mode": "locked"` | `oapp_opening_egress_not_steward_owned` |
 | capability grants | `service:cap` and `service:x402` in a locked `boundaries.egress` entry, so the app can call live catalog actions and pay x402-priced APIs through the relay | `oapp_opening_capability_grants_missing` |
 | function egress | each function's egress names only entries an app-wide boundary declares and repeats every `service:` entry exactly; no function enables `ctx.sandbox` | `oapp_opening_egress_not_steward_owned` |
@@ -52,7 +52,7 @@ If the deployed frontend is compiled output, the source that compiles into it ri
 Never add a framework, a bundler, or an unused `init()` call merely to change shape, because opening does not ask for them.
 
 **The served site and the source stay together.**
-The request to open, `openapps oapp preflight`, and a source-synced `openapps site deploy` classify the served site against the synced source:
+The request to open, `npx openapps oapp preflight`, and a source-synced `npx openapps site deploy` classify the served site against the synced source:
 
 - **static**: every file you deploy is byte-identical to a text file in your source tree.
   Only inert assets (images, fonts, audio, video, `.pdf`) are exempt from the match; anything served as code or markup (`.js`, `.html`, `.css`, `.svg`, `.wasm`) must be in your source verbatim, whatever its encoding.
@@ -87,11 +87,11 @@ The app itself is held by the platform from then on: owner and collaborator chan
 
 ## Community code contributions
 
-Anyone who may post in an app's Discussion can send it a code change from a openapps clone:
+Anyone who may post in an app's Discussion can send it a code change from a npx openapps clone:
 
 ```bash
-openapps propose --title "Show the streak counter" --slug <app-slug> --dry-run   # look at it, send nothing
-openapps propose --title "Show the streak counter" --slug <app-slug> --submit    # post it on the app's page
+npx openapps propose --title "Show the streak counter" --slug <app-slug> --dry-run   # look at it, send nothing
+npx openapps propose --title "Show the streak counter" --slug <app-slug> --submit    # post it on the app's page
 ```
 
 `--submit` posts the change in the app's Discussion under Ideas, with the diff attached as a public `code-change.diff` file.
@@ -100,4 +100,4 @@ Do not tell a contributor their diff was merged or will ship as sent; the agent 
 The agent replies in the change's thread with what it did.
 While the app's token sale runs, a release ships only to fix the sale's failed checks, so other code changes wait until the sale ends.
 The command refuses binary files and env or key files before anything is sent.
-`openapps proposals <slug>` is only the read-only viewer for the venue's older proposal backlog.
+`npx openapps proposals <slug>` is only the read-only viewer for the venue's older proposal backlog.

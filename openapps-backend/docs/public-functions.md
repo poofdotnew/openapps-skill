@@ -10,7 +10,7 @@ API host with plain HTTP - `GET`, `POST`, sub-paths, query strings, your own
 headers - and the platform never requires a token. That is what a REST API, a
 public JWKS document, a machine-to-machine token endpoint, or a callback URL
 needs, and it is the only supported way to serve them: the whole-backend runtime
-(`openapps runtime deploy`) is invoked through `/agents/<name>/<session>` only, not
+(`npx openapps runtime deploy`) is invoked through `/agents/<name>/<session>` only, not
 by arbitrary HTTP paths.
 
 ## Declare one
@@ -34,14 +34,14 @@ by arbitrary HTTP paths.
 |---|---|
 | `public` | `true` opens the route. **`auth: "true"` alone never does** - on `/invoke` that rule means "any signed-in caller", and every existing function that uses it stays token-gated. A public function must still declare the literal `auth: "true"`, and cannot combine with `actAs`, `build`, `apps`, `email`, `queueCallable`, `webhook`, or `browser`. |
 | `methods` | The verbs the route answers: any of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, uppercase, no duplicates. Omitted means `POST` only. `HEAD` is admitted whenever `GET` is. `OPTIONS` follows `cors`. Anything else is a `405` naming the allowed set. |
-| `cors` | `"app"`: the platform answers preflight itself and reflects an `Origin` only when it is one of the app's configured origins - the slug host, active custom domains, and any extras you added with `openapps domains origins` (see [domains](../../openapps-deploy/docs/domains.md)). `"passthrough"`: `OPTIONS` reaches your function and your own `Access-Control-*` headers are honored. Omitted: no CORS headers cross at all, even if the function sets them. There is no wildcard mode; use `passthrough` and set the header yourself if a route is truly for any origin. |
+| `cors` | `"app"`: the platform answers preflight itself and reflects an `Origin` only when it is one of the app's configured origins - the slug host, active custom domains, and any extras you added with `npx openapps domains origins` (see [domains](../../openapps-deploy/docs/domains.md)). `"passthrough"`: `OPTIONS` reaches your function and your own `Access-Control-*` headers are honored. Omitted: no CORS headers cross at all, even if the function sets them. There is no wildcard mode; use `passthrough` and set the header yourself if a route is truly for any origin. |
 
 Deploy it like any function - the keys ride the policy, or the CLI flags:
 
 ```sh
-openapps functions deploy broker --entry functions/broker.ts --app-id <id> \
+npx openapps functions deploy broker --entry functions/broker.ts --app-id <id> \
   --auth true --public --method GET --method POST --cors app
-openapps functions list --app-id <id>     # prints the public URL beside each public function
+npx openapps functions list --app-id <id>     # prints the public URL beside each public function
 ```
 
 A code pin that omits the flags preserves `public`, `methods`, and `cors`
@@ -100,13 +100,13 @@ What crosses in and out:
 - Your caller's headers reach you as sent, including `Authorization` (so your own tokens work), minus `cookie`, `x-bounded-*`, `x-internal-*`, `x-test-*`, and hop-by-hop fields.
 - Request bodies are UTF-8 text up to 128 KiB, never compressed. `GET`/`HEAD` carry no body.
 - Response headers cross only from this allowlist: `content-type`, `cache-control`, `etag`, `last-modified`, `expires`, `vary`, `content-language`, `content-disposition`, `allow`, `retry-after`, `www-authenticate`, `link`, plus the `Access-Control-*` set under `cors: "passthrough"`. `Set-Cookie` never does.
-- A thrown error is a `500 { "error": "<message>" }`. Every response carries `x-bounded-invocation-id`, which matches the durable log entry in `openapps functions logs`.
+- A thrown error is a `500 { "error": "<message>" }`. Every response carries `x-bounded-invocation-id`, which matches the durable log entry in `npx openapps functions logs`.
 - Cost-bearing calls (`ctx.ai`, `ctx.services`) still need an idempotency key; a caller may supply an outer `Idempotency-Key` header exactly as on `/invoke`. That header is also what makes a request replayable (below).
 
 ## What the caller gets, and what the platform records
 
 The status your function returns is the status the caller receives, and it is also the status the platform settles, logs and counts.
-The platform decodes your response before it records anything, so a `Response` with status `403` is a rejection everywhere (`openapps functions logs`, analytics, billing), never a "200 OK" wearing a 403.
+The platform decodes your response before it records anything, so a `Response` with status `403` is a rejection everywhere (`npx openapps functions logs`, analytics, billing), never a "200 OK" wearing a 403.
 
 | Your function | Caller receives | Recorded as | Same `Idempotency-Key` again |
 |---|---|---|---|
@@ -151,7 +151,7 @@ When it cannot be, the caller gets a stable code and a `retry` block, and your f
 | `429` | `usage_cap_exceeded` | `cap_reset` | A per-app cap (`dimension` names it) is reached for the period. |
 | `503` | `services_billing_unavailable`, `courtesy_renewal_unavailable`, `ledger_capacity_exhausted`, `admission_protocol_unavailable`, `app_billing_unavailable` | `service_recovery` | Billing could not decide right now; honor `Retry-After`. |
 
-A refusal is not an attempt: it does not appear as a failed run in `openapps functions logs` or in the failure rate, it is counted separately (see [analytics](../../openapps/docs/analytics.md)), and it is safe to retry under the same `Idempotency-Key` once the condition clears.
+A refusal is not an attempt: it does not appear as a failed run in `npx openapps functions logs` or in the failure rate, it is counted separately (see [analytics](../../openapps/docs/analytics.md)), and it is safe to retry under the same `Idempotency-Key` once the condition clears.
 Every refusal still carries `x-bounded-invocation-id`.
 
 ## Who is calling
@@ -171,7 +171,7 @@ an owner field) where it matters. Rules and invariants still run on every
 The principal has a name in policy. The platform injects
 `@const.BOUNDED_PUBLIC_PRINCIPAL_<FN>` for every `public: true` function (the
 function name uppercased, so `broker` gives `BOUNDED_PUBLIC_PRINCIPAL_BROKER`),
-and a public deploy and `openapps functions list` print the same value beside the
+and a public deploy and `npx openapps functions list` print the same value beside the
 URL, so you never copy a hash:
 
 ```jsonc
@@ -188,7 +188,7 @@ URL, so you never copy a hash:
 See [constants](constants-and-defs.md#platform-injected-constants-constbounded_).
 
 > **Naming it needs an app id.** Like every `BOUNDED_*` constant, the principal is computed from the app id,
-> so it does not exist before the app does: `openapps deploy --create` verifies the policy first and refuses a
+> so it does not exist before the app does: `npx openapps deploy --create` verifies the policy first and refuses a
 > rule that references one with `@const.BOUNDED_PUBLIC_PRINCIPAL_<FN> is not defined in the constants block`.
 > Create the app first (or deploy the constant-free policy with `--create`), then deploy the policy that
 > names the principal.

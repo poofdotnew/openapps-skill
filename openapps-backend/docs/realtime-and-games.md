@@ -95,7 +95,7 @@ not `get`'s paged envelope:
 > **`onData` fires REPEATEDLY — never treat the first call as the complete/final
 > set** (this is the #1 way a working subscription is misread as broken). The
 > first delivery is the snapshot of what exists *right now*; every later write by
-> **any** writer (another client, `openapps data set`, a function, a tick) fires
+> **any** writer (another client, `npx openapps data set`, a function, a tick) fires
 > `onData` again with the new full array. A doc a *different* identity creates a
 > moment after you subscribe arrives in a **later** `onData`, not the first — so a
 > one-shot `if (logged) return` / log-the-first-payload-only guard makes a healthy

@@ -18,7 +18,7 @@ expressed against them never goes stale and nobody can self-promote into one.
 
 The four **role sets** (`__admins__`/`__developers__`/`__viewers__`/`__billing__`)
 are the *control-plane → data-plane bridge*: they project the control roster (set via
-`openapps share --role` or the policy `access` block) so a rule can opt into giving a
+`npx openapps share --role` or the policy `access` block) so a rule can opt into giving a
 control role data powers — **without any hidden owner/admin bypass**. See
 [access-control.md](access-control.md) for the `access` block, custom roles, and the
 platform super-admin pattern.

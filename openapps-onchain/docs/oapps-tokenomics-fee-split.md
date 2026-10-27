@@ -320,7 +320,7 @@ this is a *self-refilling* budget backed by real claimed fees):
 
 The full reference policy (all 11 collections + constants + `functions.keeper`) is at
 [examples/oapps-tokenomics/](../examples/oapps-tokenomics/) with a README. It is
-reference-only (no `appId`, deploys nothing). `openapps verify --experimental` from
+reference-only (no `appId`, deploys nothing). `npx openapps verify --experimental` from
 that directory produces its proof report if you want one
 ([formal verification](../../openapps-backend/docs/formal-verification.md)); a
 green report does not show that the Meteora integration works on devnet, which

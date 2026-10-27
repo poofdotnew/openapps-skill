@@ -18,7 +18,7 @@ await disconnect('x');
 ```
 
 - Call `completeConnection()` once the user is signed in; it throws `ConnectionError` (`.code`, e.g. `cancelled`) when the user backed out.
-- The return page must be on an origin that serves the app: its bounded.page or custom domain work as is; for localhost or a host outside OpenApps, register it with `openapps domains origins add <origin> --app-id <id>`.
+- The return page must be on an origin that serves the app: its bounded.page or custom domain work as is; for localhost or a host outside OpenApps, register it with `npx openapps domains origins add <origin> --app-id <id>`.
 - Web only for now (`connect` redirects the page); React Native is not supported yet.
 - Guests cannot link; the link belongs to this app's account only.
 
@@ -50,7 +50,7 @@ Offchain rules only: an onchain rule cannot read `__connections__`.
 ## Testing linked-X rules
 
 Give a policy-test actor an `x` field to give it a linked X account: `"Xavi": { "id": "xavi", "x": { "id": "1234567890", "handle": "xavi" } }`.
-`openapps tests run` stores it at `__connections__/xavi` the same way a completed link does, so `get(/__connections__/@user.id).xHandle` is `xavi` for that actor.
+`npx openapps tests run` stores it at `__connections__/xavi` the same way a completed link does, so `get(/__connections__/@user.id).xHandle` is `xavi` for that actor.
 An actor without `x` has no linked account (`xId` is `null`), so keep one test with such an actor that expects the write to fail.
 See [policy tests](../../openapps-backend/docs/policy-tests.md) for the field rules.
 A policy test does not run X's consent screen, so try `connect('x')` once by hand.

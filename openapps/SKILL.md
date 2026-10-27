@@ -15,7 +15,7 @@ Use this skill for the app's capability constraints and, when requested, its lif
 
 - **External coding agent working for the creator of an Owned app:** use [creator publishing](../openapps-deploy/docs/quickstart.md#publish-an-owned-openapps-frontend-from-local-source) for a tested local frontend change.
   Having an app agent does not require sending that change through an AI run.
-  `openapps propose --submit --apply` still asks the app agent to apply it; it is not the no-AI publishing path.
+  `npx openapps propose --submit --apply` still asks the app agent to apply it; it is not the no-AI publishing path.
 - **Creator asking to open an app:** use the lifecycle, launch-gate, and preflight references for the current phase.
   A build or edit request does not by itself request opening; continue work already authorized by the user.
 - **Agent running on an OpenApps app computer:** the app already exists and you are its agent.
@@ -28,17 +28,17 @@ Use this skill for the app's capability constraints and, when requested, its lif
 
 - Use OpenApps-managed hosting, data, auth, payments, wallets, onchain access, and AI, billed to the app's own credit pool and governed by its policy.
 - To hold USDC for a deal, keep it in an escrow in the app's own policy that the app's agent settles: [App escrow](docs/app-escrow.md).
-- An Owned app may keep services it already uses: its creator sets their keys with `openapps secret put` or Keys in the Fine print of the app's page, functions read them as `ctx.secrets`, and a [Next.js server](../openapps-frontend/docs/server-apps.md) reads them as `process.env`.
+- An Owned app may keep services it already uses: its creator sets their keys with `npx openapps secret put` or Keys in the Fine print of the app's page, functions read them as `ctx.secrets`, and a [Next.js server](../openapps-frontend/docs/server-apps.md) reads them as `process.env`.
   A key never goes in source.
-  `openapps secret put NAME --preview` (Previews only, on the app's page) sets the test key every preview of the app receives; the app's own value never reaches a preview.
-  `openapps secret put NAME --agent --host <host>` gives the app's agent a key for its own work, sealed on its computer and sent only to those hosts.
+  `npx openapps secret put NAME --preview` (Previews only, on the app's page) sets the test key every preview of the app receives; the app's own value never reaches a preview.
+  `npx openapps secret put NAME --agent --host <host>` gives the app's agent a key for its own work, sealed on its computer and sent only to those hosts.
   Only the creator sees the Keys panel, and it lists names, never values.
 - An APO requires that no person holds a key the app uses: the app holds no key a person set (its own values, preview values, or a key the creator put on its agent), and no function declares a key its agent did not donate.
   A key the app's own agent obtains and donates is fine: the platform adds it to the app's requests to that key's hosts, and a function that declares it reads only a stand-in.
 - An app that runs a server cannot open yet.
   An app in an APO or Open cannot depend on a vendor account, external server, or admin backdoor that a person holds.
 - Prefer native capabilities or live catalog actions, then the steward's x402 relay for supported paid APIs.
-  For a capability whose availability is unknown, use `openapps services search "<need>"` and read the [capability ladder](docs/capability-ladder.md).
+  For a capability whose availability is unknown, use `npx openapps services search "<need>"` and read the [capability ladder](docs/capability-ladder.md).
   Credential-free public endpoints still require declared egress.
 - If a capability is unavailable, explain the constraint and the nearest compliant alternative, and continue the independent work within the user's scope.
   Do not silently replace a required feature or add a personal secret to bypass the constraint.
@@ -52,8 +52,8 @@ npx openapps init
 
 The CLI ships on npm as a project dev dependency, so the same two commands work
 on macOS, Linux, and Windows with no shell involved (Node 20 or later). Run every
-command as `npx openapps <command>`; this skill family writes commands in the
-bare `openapps <command>` form, which is what a global install answers to.
+command as `npx openapps <command>`, as this skill family
+writes them; npx runs the installed CLI, or fetches it from npm when it is missing.
 For a global command, `npm install -g openapps` installs `openapps`.
 
 If the install command is blocked, or `openapps` is not found afterward, ask the
@@ -61,7 +61,7 @@ user to run it in their own terminal, then continue with `npx openapps init`.
 This setup needs a session that can run commands: a Claude Code session or
 another agent with terminal access, not a chat-only surface.
 
-`openapps init` also installs this skill family for the agents on the machine,
+`npx openapps init` also installs this skill family for the agents on the machine,
 then opens OpenApps' hosted browser login when needed, then creates
 `policy.json` and public project config. It reuses a valid saved web session.
 It owns authentication for normal onboarding; no preliminary account command is
@@ -109,10 +109,10 @@ Load these only when the task calls for them:
   invariant conflicts return `409` with the invariant name. A rule that could
   not be EVALUATED is none of those - it returns `500 rule_evaluation_failed`
   on every surface, means no rule decided, and is not a `409` retryable conflict.
-  Read `openapps decisions` for the cause; do not assume a retry will fail.
-- A rule or invariant is enforced by the runtime as written. Check a policy with `openapps tests run` and by deploying it; do not look for a proof step.
-- Before using an onchain plugin, run `openapps plugins list --json` and inspect its exact contract with `openapps plugins describe <plugin.function> --json` without treating its capability state as live-network proof.
-- Give a collaborator access with `openapps share`; do not add application
+  Read `npx openapps decisions` for the cause; do not assume a retry will fail.
+- A rule or invariant is enforced by the runtime as written. Check a policy with `npx openapps tests run` and by deploying it; do not look for a proof step.
+- Before using an onchain plugin, run `npx openapps plugins list --json` and inspect its exact contract with `npx openapps plugins describe <plugin.function> --json` without treating its capability state as live-network proof.
+- Give a collaborator access with `npx openapps share`; do not add application
   allowlists for control-plane access.
 - Never put provider secrets in frontend code or commit credentials.
 
@@ -126,8 +126,8 @@ Read the reference needed for the current task.
 |---|---|
 | The agent an app has from creation, live values and preview values, Owned / on sale / Open, asking to open, the token sale, mainnet, source sync, one sale per app | [Lifecycle](docs/lifecycle.md) |
 | App capability availability, unsupported dependencies, catalog requests, x402 payment and recovery semantics | [Capability ladder](docs/capability-ladder.md) |
-| What opening checks: oApp mode, required boundaries and egress grants, secrets, the served site, `openapps propose` | [Launch gate](docs/launch-gate.md) |
-| `openapps oapp preflight` and its report | [Preflight](docs/preflight.md) |
+| What opening checks: oApp mode, required boundaries and egress grants, secrets, the served site, `npx openapps propose` | [Launch gate](docs/launch-gate.md) |
+| `npx openapps oapp preflight` and its report | [Preflight](docs/preflight.md) |
 | Preparing to ask to open | [Opening checklist](docs/checklist.md) |
 | Sealed launch economics, treasury fees, pending claims, operating reserves, how credits stay funded, and the agent's daily limit | [Launch economics](docs/launch-economics.md) |
 

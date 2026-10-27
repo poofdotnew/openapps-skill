@@ -46,7 +46,7 @@ your own spend fence — the reservation is taken up front and released on settl
 
 **Replay safety.** Like `ctx.ai`, `ctx.browser.run` requires `idempotencyKey`
 and a replay-safe invocation (an `Idempotency-Key` header on direct invokes —
-`openapps functions invoke ... --idempotency-key <key>` — or a scheduled run). A
+`npx openapps functions invoke ... --idempotency-key <key>` — or a scheduled run). A
 retried invocation replays the SAME drive result instead of opening and billing
 a second session. Errors carry stable codes to branch on: `egress_denied`,
 `browser_unavailable`, `browser_busy`, `browser_request_invalid`.

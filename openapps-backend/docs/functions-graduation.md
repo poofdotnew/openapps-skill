@@ -44,7 +44,7 @@ a sealed, metered, spend-capped `ctx`:
 - You need **long-running / batch / background** work — use resumable scheduled steps instead of one long function call.
 
 You keep OpenApps auth identity, the credit pool, versioning, and billing
-([billing.md](../../openapps/docs/billing.md)). Deploy with `openapps runtime deploy`. This is the normal upgrade
+([billing.md](../../openapps/docs/billing.md)). Deploy with `npx openapps runtime deploy`. This is the normal upgrade
 from an OpenApps function.
 
 > **"Keep auth identity" is not "auth is handled."** The runtime verifies the caller's
@@ -65,7 +65,7 @@ runQuery`, every write still through your policy). Hybrid is the norm.
 ## Graduating to the runtime is mechanical, not a rewrite
 
 Your function logic carries over to the OpenApps runtime almost verbatim — the runtime
-wraps your code with the same kind of sealed `ctx`. `openapps runtime deploy` and you're
+wraps your code with the same kind of sealed `ctx`. `npx openapps runtime deploy` and you're
 on Tier 2 with custom deps + state + schedules, still inside OpenApps' managed guarantees.
 
 ### What you take on if you go all the way to Tier 3 (eject — the honest tradeoffs)

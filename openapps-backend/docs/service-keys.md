@@ -18,7 +18,7 @@ Functions mode. Gate every `actAs` function's `auth` rule on the app's admin
 predicate through a runtime-valid gate; nothing checks that for you. When the people who may
 run it are your own team, gate on the control-plane roster and declare nothing:
 `@user.id != null && (get(/__owners__/@user.id) != null || get(/__admins__/@user.id) != null)`
-admits the owner and every `openapps share --role admin` collaborator. When they
+admits the owner and every `npx openapps share --role admin` collaborator. When they
 are end-users of the app, gate on an app-data registry such as
 `get(/admins/@user.id) != null` and declare a bootstrap-safe `admins/$userId`
 collection with a founder genesis clause before deploying the Function; see
@@ -263,8 +263,8 @@ just a data-plane write). In that case:
   `actAs` itself is a policy `functions`-block field and can also be replaced with `--act-as` on a standalone function deploy.
   Set the secret value through stdin so it does not appear in argv or shell history, then declare the name on the function deploy when you want to replace that function's secret grant:
   ```bash
-  printf '%s' "$PAYOUT_BOT_KEY" | openapps secret put PAYOUT_BOT_KEY --value-stdin --app-id <id>
-  openapps functions deploy runPayouts \
+  printf '%s' "$PAYOUT_BOT_KEY" | npx openapps secret put PAYOUT_BOT_KEY --value-stdin --app-id <id>
+  npx openapps functions deploy runPayouts \
     --entry functions/runPayouts.ts \
     --app-id <id> \
     --auth 'get(/admins/@user.id) != null' \

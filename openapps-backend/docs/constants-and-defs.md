@@ -42,7 +42,7 @@ They are computed from the target app id and merged into the policy's `constants
 |---|---|
 | `BOUNDED_APP_ID` | The app's own 24-hex id. |
 | `BOUNDED_TREASURY_PDA` | The app's treasury address: the PDA of its `treasury` named account (the same address `@AccountPlugin.getAccountAddress("treasury")` resolves to). Point revenue directions here. |
-| `BOUNDED_PUBLIC_PRINCIPAL_<FN>` | The reserved principal a `public: true` function runs as when the caller presents no OpenApps identity (`__bounded_public_v1__:<sha256>`), one per public function. `<FN>` is the function name uppercased, non-alphanumerics as `_`: `broker` gives `BOUNDED_PUBLIC_PRINCIPAL_BROKER`. `openapps functions list` and a public deploy print the same value. |
+| `BOUNDED_PUBLIC_PRINCIPAL_<FN>` | The reserved principal a `public: true` function runs as when the caller presents no OpenApps identity (`__bounded_public_v1__:<sha256>`), one per public function. `<FN>` is the function name uppercased, non-alphanumerics as `_`: `broker` gives `BOUNDED_PUBLIC_PRINCIPAL_BROKER`. `npx openapps functions list` and a public deploy print the same value. |
 | `BOUNDED_BROWSER_PRINCIPAL_<FN>` / `BOUNDED_WEBHOOK_PRINCIPAL_<FN>` | The same for a `browser`-public or `webhook` function (`__bounded_browser_v1__:` / `__bounded_webhook_v1__:` namespaces). |
 
 Naming the principal is what makes it usable in rules: `@user.id == @const.BOUNDED_PUBLIC_PRINCIPAL_BROKER` admits exactly that route, and `@user.id != null && @user.id != @const.BOUNDED_PUBLIC_PRINCIPAL_BROKER` keeps the anonymous route out of a collection a bare `@user.id != null` would open to it (the public principal has a non-null id). See [public functions](public-functions.md#who-is-calling).
@@ -114,7 +114,7 @@ policy.json ──► (deploy) ──► resolvePolicyMacros ──► validate 
   enforcement only sees literals. Macros add **no runtime cost**.
 - The `constants`/`defs` blocks are kept on the stored policy for transparency
   (they are reserved keys; they are never treated as collections).
-- **Errors** (surfaced at `openapps deploy`):
+- **Errors** (surfaced at `npx openapps deploy`):
   - `@const.X is not defined in the constants block`
   - `@def.x is not defined` / dangling macro with no source block
   - `cyclic @def reference involving "x"`
@@ -188,7 +188,7 @@ select a different service identity per environment:
 }
 ```
 
-`openapps deploy ./policy.json --environment staging` overlays the staging
+`npx openapps deploy ./policy.json --environment staging` overlays the staging
 constants, so the deployed policy carries `"actAs": "StgSteward222..."`.
 The production entry overrides nothing, so it resolves the top-level default
 and the production-resolved policy is byte-for-byte what it was.

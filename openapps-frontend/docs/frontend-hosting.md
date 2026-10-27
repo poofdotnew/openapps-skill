@@ -46,7 +46,7 @@ backend.
 ## Deploy
 
 ```bash
-openapps site deploy ./dist --app-id <id>
+npx openapps site deploy ./dist --app-id <id>
 ```
 
 - Uploads every file under the dir (default `./dist`); **must contain `index.html`** at root.
@@ -56,10 +56,10 @@ openapps site deploy ./dist --app-id <id>
   5000 files, path-safety.
 - Live in seconds at the app's mapped slug or custom-domain host, e.g.
   `https://<slug>.bounded.page`.
-- `openapps deploy --create` gives an offchain (Poofnet) app a **public** hosted
+- `npx openapps deploy --create` gives an offchain (Poofnet) app a **public** hosted
   site and an onchain (devnet, mainnet) app a **private hosted-site gate**;
   `--public` / `--private` overrides it.
-  An app created implicitly by `openapps site deploy` starts private unless
+  An app created implicitly by `npx openapps site deploy` starts private unless
   `--public` is passed. The
   gate is deliberately simple and **web-login only**: a public app is reachable
   by anyone; a private app is reachable only after signing in with an OpenApps
@@ -69,7 +69,7 @@ openapps site deploy ./dist --app-id <id>
   and never gain owner or collaborator powers on it. There is no
   local-key/daemon auto-pass through the gate. Existing apps stay as
   they were. After creation, flip or inspect the gate with
-  `openapps site privacy private|public|status --app-id <id>`, **or** flip it
+  `npx openapps site privacy private|public|status --app-id <id>`, **or** flip it
   from the in-app OpenApps widget's always-visible privacy toggle (cloud-backed;
   no local daemon required).
   An OpenApps app on sale or Open is the exception: the platform holds it, so a privacy change is refused (`managed_app_mutation_forbidden`).
@@ -77,7 +77,7 @@ openapps site deploy ./dist --app-id <id>
   API hosts are not gated.
   The private-site gate page itself tells owners and visitors how to make the app public.
 - **Preview a private site in a browser without making it public:**
-  `openapps site preview --app-id <id>` (add `--open` to launch it). As
+  `npx openapps site preview --app-id <id>` (add `--open` to launch it). As
   owner/admin you already pass the gate; this mints a short-lived, shareable
   one-click link — `https://<host>/__bounded/gate/land?token=…` — that sets the
   gate cookie and lands on the REAL site, then expires (default 60 min, `--ttl
@@ -114,7 +114,7 @@ Those unmounted URLs use ordinary conditional revalidation, including fonts refe
 HTML script and stylesheet entries still participate in OpenApps' rewrite even when their original files came from `public/`.
 Leave bundled assets on Vite's relative fallback; returning a root URL for every asset breaks the shared namespace for lazy CSS preload dependencies.
 
-Deploy the entire built directory with the ordinary `openapps site deploy` command.
+Deploy the entire built directory with the ordinary `npx openapps site deploy` command.
 OpenApps rewrites the built HTML's local script, modulepreload, and stylesheet URLs into a directory identified by the complete published file map's SHA256 digest.
 Relative imports and preload links share that directory, so the same module keeps one browser identity.
 Responses in the verified namespace are immutable only after the requested namespace matches the current public publication and the file bytes match its pinned digest.
@@ -139,9 +139,9 @@ boundaries declined) plus a small "Boundaries" corner badge on the site. It is
 turns it on:
 
 ```bash
-openapps site proof on --app-id <id>     # publish the page + badge
-openapps site proof off --app-id <id>    # remove them
-openapps site proof status --app-id <id>
+npx openapps site proof on --app-id <id>     # publish the page + badge
+npx openapps site proof off --app-id <id>    # remove them
+npx openapps site proof status --app-id <id>
 ```
 
 Also toggleable from the dashboard (the "Public proof page" card). Takes effect
@@ -188,7 +188,7 @@ sign-in tokens may be delivered.
 Ownership is refused on both rails.
 A launched oApp belongs to its venue, so a single-app transfer returns
 `oapp_launched`, and the bulk wallet-to-web-login migration
-(`openapps transfer-apps`) skips launched apps and reports them back to you
+(`npx openapps transfer-apps`) skips launched apps and reports them back to you
 under `skippedLaunched` rather than moving them.
 An interactive deploy is refused even when the uploaded bytes are identical to
 what the app already serves.
@@ -211,7 +211,7 @@ temporary source backend failure. Then enable source push and redeploy:
 
 ```bash
 # bounded.json: { "sourcePush": true }   — or one-off:
-openapps site deploy ./dist --with-source
+npx openapps site deploy ./dist --with-source
 ```
 
 Read the deploy output: `source synced: <sha>` proves the tree landed; a
@@ -233,7 +233,7 @@ It uses the same visibility gate and fails instead of returning a partial archiv
 Frontend variants are optional preview branches:
 
 ```bash
-openapps site deploy ./dist --app-id <id> --variant var_alice_dashboard --variant-label "Alice dashboard"
+npx openapps site deploy ./dist --app-id <id> --variant var_alice_dashboard --variant-label "Alice dashboard"
 ```
 
 Open `https://<slug>.bounded.page/__bounded/preview?variant=var_alice_dashboard`
@@ -242,9 +242,9 @@ the normal URL while the router serves that variant for the session. Owners can
 review, roll back, and merge frontend branches with:
 
 ```bash
-openapps site variants --app-id <id>
-openapps site rollback --variant var_alice_dashboard --app-id <id>
-openapps site promote var_alice_dashboard --app-id <id>
+npx openapps site variants --app-id <id>
+npx openapps site rollback --variant var_alice_dashboard --app-id <id>
+npx openapps site promote var_alice_dashboard --app-id <id>
 ```
 
 Variants are frontend-only. They cannot bypass backend permissions, functions,
@@ -259,10 +259,10 @@ on later deploys or promotions. Pins are ADDITIONAL to the newest 10: pin any
 version you may want to roll back to later, BEFORE it ages out.
 
 ```bash
-openapps site versions --app-id <id>          # what is restorable, what is live, what is pinned
-openapps site pin <deployId> --app-id <id>    # keep this version beyond the newest 10 (owner/admin)
-openapps site unpin <deployId> --app-id <id>  # let it age out again
-openapps site rollback <deployId> --app-id <id>
+npx openapps site versions --app-id <id>          # what is restorable, what is live, what is pinned
+npx openapps site pin <deployId> --app-id <id>    # keep this version beyond the newest 10 (owner/admin)
+npx openapps site unpin <deployId> --app-id <id>  # let it age out again
+npx openapps site rollback <deployId> --app-id <id>
 ```
 
 Rules of thumb:
@@ -275,13 +275,13 @@ Rules of thumb:
   that receipt is not a restorable frontend version.
 - User pins are bounded by a per-app cap; system pins never count against it.
 - Rolling back to a version that aged out answers `410 site_deploy_expired`:
-  run `openapps site versions` and pick a retained version instead. A `404`
+  run `npx openapps site versions` and pick a retained version instead. A `404`
   means the id never existed for this app.
 
 ## Typical flow
 ```bash
 npm run build                              # produces ./dist
-openapps site deploy ./dist --app-id <id>   # → https://<slug>.bounded.page after you claim a slug
+npx openapps site deploy ./dist --app-id <id>   # → https://<slug>.bounded.page after you claim a slug
 # frontend calls a public function at https://<slug>-api.bounded.page/<functionName>/...
 # or the backend runtime at https://<slug>-api.bounded.page/agents/<name>/<session>
 ```
@@ -289,8 +289,8 @@ openapps site deploy ./dist --app-id <id>   # → https://<slug>.bounded.page af
 For deployed private-site testing, expect normal OpenApps login rather than
 localhost auto-unlock.
 
-That's the product surface: **`openapps deploy` (policy) + `openapps runtime deploy`
-(backend code) + `openapps site deploy` (frontend)** on one app id.
+That's the product surface: **`npx openapps deploy` (policy) + `npx openapps runtime deploy`
+(backend code) + `npx openapps site deploy` (frontend)** on one app id.
 
 ## Per-route social cards (`ogRoutes`) — make shared links unfurl per resource
 
@@ -330,7 +330,7 @@ sees it. No SSR server, no extra infra.
 }
 ```
 
-Then `openapps deploy` as usual — the `ogRoutes` map ships with the policy; no
+Then `npx openapps deploy` as usual — the `ogRoutes` map ships with the policy; no
 extra command is needed.
 
 **Rules & guarantees**

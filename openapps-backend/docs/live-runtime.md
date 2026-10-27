@@ -4,7 +4,7 @@
 server-authoritative loop for **any** realtime app (multiplayer games,
 Figma-style collaborative editors, whiteboards, live dashboards, trading
 screens). Upload a module exporting three pure functions (`init`/`tick`/`views`),
-declare a `session.live` block, run `openapps live deploy`, and drive it from the
+declare a `session.live` block, run `npx openapps live deploy`, and drive it from the
 SDK. OpenApps runs your code in an isolated room runtime, runs the tick ~30Hz
 server-authoritatively, snapshots + checkpoints state, and fans per-client views
 out live. You write the room logic — nothing else.
@@ -37,7 +37,7 @@ A complete native live room is **four artifacts** and no infrastructure:
 |---|---|---|
 | 1. The live module (3 pure fns) | `pong.live.ts` (your repo) | OpenApps, inside the room runtime, ~30Hz |
 | 2. The `session.live` policy block | `policy.json` on a `rooms/$roomId` template | deploy + runtime enforcement |
-| 3. `openapps live deploy <module>.live.ts` | deployed live module | you, once per code change |
+| 3. `npx openapps live deploy <module>.live.ts` | deployed live module | you, once per code change |
 | 4. The SDK client (subscribe + intents) | your web/RN/server app | each client's device |
 
 **Artifact 1 — the module.** It exports **exactly three** pure functions and
@@ -75,7 +75,7 @@ contract from the top of `pong.live.ts`:
   universal `@user.id` to *what that client may see*. OpenApps fans each entry out
   to that user's view collection.
 
-> **TypeScript is fine — types are stripped at upload.** `openapps live deploy`
+> **TypeScript is fine — types are stripped at upload.** `npx openapps live deploy`
 > transpiles the `.ts` source (strips annotations like `intents: any[]`, `x as Foo`,
 > `: State`) before storing it, so the room runtime loads clean JS. Write the three
 > functions in TS or JS; both work. (Keep it to type-stripping syntax — no path
@@ -112,7 +112,7 @@ not the hosting plumbing.
 rooms that reference its module name:
 
 ```sh
-openapps live deploy pong.live.ts --app-id <id>
+npx openapps live deploy pong.live.ts --app-id <id>
 ```
 
 **Artifact 4 — the SDK client** subscribes to its own per-client view and posts
@@ -614,12 +614,12 @@ reducers are unchanged.
 ## Deploy + run lifecycle
 
 ```sh
-openapps live deploy pong.live.ts --app-id <id>   # upload source; prints a version
+npx openapps live deploy pong.live.ts --app-id <id>   # upload source; prints a version
 
 # Drive (or cold-start) a room from the CLI — queues an intent for the next tick
 # AND arms the loop if it isn't running. The CLI equivalent of bounded.live.intent.
-openapps live intent rooms/r1 --app-id <id> --intent '{"type":"join","name":"alice"}'
-openapps live status rooms/r1                     # uses bounded.json appId by default
+npx openapps live intent rooms/r1 --app-id <id> --intent '{"type":"join","name":"alice"}'
+npx openapps live status rooms/r1                     # uses bounded.json appId by default
 ```
 
 Deploy uploads the module source and prints a version identifier. If a room
@@ -640,9 +640,9 @@ The SDK attaches your session token when you are signed in; the server then gate
 A caller who cannot read the room — anonymous, or not authorized by the read rule — gets only the slim `{ available, started, module }` liveness shape, with no error strings, tick counter, connection count, or telemetry.
 
 Drive intents from anywhere: the browser SDK (`bounded.live.intent(roomPath, intent)`),
-a server with `@bounded-sh/server`, or the **CLI** — `openapps live intent <roomPath>
+a server with `@bounded-sh/server`, or the **CLI** — `npx openapps live intent <roomPath>
 --app-id <id> --intent '<json>'` (great for cold-starting a room, scripts, and tests).
-Use `openapps live status <roomPath>` (or pass `--app-id <id>` to override
+Use `npx openapps live status <roomPath>` (or pass `--app-id <id>` to override
 `bounded.json`) or `live.status(roomPath)` when
 debugging liveness: parked rooms report `running:false` plus `stopReason`,
 `generation`, loaded `etag`, open `connections`, and alarm/tick timestamps.
@@ -713,7 +713,7 @@ await live.intent(roomPath, { type: "move", dir: -1 });
 > signup (requires `"auth": { "anonymous": true }` in policy).
 
 Status/liveness is first-class in the SDK and CLI:
-`await live.status(roomPath)` or `openapps live status <roomPath>`
+`await live.status(roomPath)` or `npx openapps live status <roomPath>`
 returns `{ available, started, running, tick, module, etag, stopReason,
 generation, connections, lastTickAt, nextAlarmAt }` when the caller is authorized
 to read the room; an unauthorized/anonymous caller gets the slim

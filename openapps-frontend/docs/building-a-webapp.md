@@ -35,7 +35,7 @@ interop resolves.
 import { init } from "@bounded-sh/client";
 
 await init({
-  appId: "<appId>",          // from `openapps deploy --create`; points at bounded-production
+  appId: "<appId>",          // from `npx openapps deploy --create`; points at bounded-production
   // Email + OAuth/social + text use hosted loginWithRedirect/loginWithPopup.
   // 'phantom' (or its 'wallet' alias) selects browser wallet auth when
   // walletLogin is explicitly enabled.
@@ -137,7 +137,7 @@ Each write has a fixed message in your words for what it requires, no values, sh
 Before writing, check what the client already knows (`@user`, `@newData`, literals, documents loaded for the control) and say which part fails.
 Never fetch a document just to check a rule.
 A control shown where the rule would refuse is a UI bug: fix the control.
-A refusal you cannot explain: `openapps decisions --app-id <appId> --denied-only --json` names the failed condition and its values, other people's data: never quote them.
+A refusal you cannot explain: `npx openapps decisions --app-id <appId> --denied-only --json` names the failed condition and its values, other people's data: never quote them.
 
 ## Subscribe (live UI)
 
@@ -193,7 +193,7 @@ the popup shows an error like:
 Fix it once per app + port (run as the app owner):
 
 ```bash
-openapps domains origins add http://localhost:5173 --app-id <id>
+npx openapps domains origins add http://localhost:5173 --app-id <id>
 ```
 
 - `http://` is accepted **only** for `localhost` / `127.0.0.1` / `[::1]`; every
@@ -204,7 +204,7 @@ openapps domains origins add http://localhost:5173 --app-id <id>
 - The registration is permanent, like a localhost redirect URI in Google or
   GitHub OAuth. This is safe: only the owner can add origins, and plaintext
   `http` never authorizes a non-loopback host. Remove one any time with
-  `openapps domains origins remove <origin> --app-id <id>`.
+  `npx openapps domains origins remove <origin> --app-id <id>`.
 - Once an OpenApps app's token sale has started, its origin list is frozen
   (`403 managed_app_mutation_forbidden`), so register dev origins before asking
   to open.

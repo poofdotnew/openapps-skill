@@ -3,18 +3,18 @@
 OpenApps hosted frontends are served through mapped hosts, not raw app-id labels.
 Use a vanity slug or a custom domain for the public URL you give users.
 The examples below show production `*.bounded.page` hosts.
-Resolve the vanity host with `openapps domains list --app-id <id> --env <environment> --json` and use its nonempty `slugUrl`.
+Resolve the vanity host with `npx openapps domains list --app-id <id> --env <environment> --json` and use its nonempty `slugUrl`.
 For staging provenance, require the JSON field itself instead of copying a human-rendered hostname.
-A successful `openapps site deploy ... --env <environment> --json` receipt is the other URL-bearing source; retain its nonempty `url`.
-`openapps apps inspect` proves the active policy/runtime publication and does not return a host.
+A successful `npx openapps site deploy ... --env <environment> --json` receipt is the other URL-bearing source; retain its nonempty `url`.
+`npx openapps apps inspect` proves the active policy/runtime publication and does not return a host.
 When the intended environment returns a host such as `*.staging.bounded.page`, retain that exact host in deploy receipts, release markers, probes, and user-facing links.
 Never replace a returned staging host with a synthesized production hostname.
 
 > **Agents: claim a vanity slug by default.** Don't leave new apps on the raw
-> app id. Immediately after `openapps deploy --create`, run
-> `openapps domains slug <name-kebab-cased> --app-id <id>`. If the name is taken the CLI
+> app id. Immediately after `npx openapps deploy --create`, run
+> `npx openapps domains slug <name-kebab-cased> --app-id <id>`. If the name is taken the CLI
 > prints a suggested alternative — claim that instead. Then surface the
-> `slugUrl` from `openapps domains list --app-id <id> --env <environment> --json` to the user (and deploy the site to it). It's free,
+> `slugUrl` from `npx openapps domains list --app-id <id> --env <environment> --json` to the user (and deploy the site to it). It's free,
 > reversible (`--release`), reserves the name, and wires `allowedOrigins` so auth/CORS work.
 > No need to ask first.
 
@@ -23,8 +23,8 @@ Never replace a returned staging host with a synthesized production hostname.
 Claim one canonical vanity subdomain for your app:
 
 ```bash
-openapps domains slug myapp --app-id <id>     # → https://myapp.bounded.page
-openapps domains slug --release --app-id <id> # free it
+npx openapps domains slug myapp --app-id <id>     # → https://myapp.bounded.page
+npx openapps domains slug --release --app-id <id> # free it
 ```
 
 - **Globally unique** (it's a subdomain). If the name is taken, the CLI prints a suggested
@@ -47,10 +47,10 @@ registers the slug for the app atomically.
 > **`domains remove` does NOT free a slug.** The two live in different places: a
 > slug is `app.slug`, custom domains are `app.customDomains`, and
 > `DELETE /app/:id/domains/:domain` only searches the latter. So
-> `openapps domains remove myapp.bounded.page` on a slug returns
+> `npx openapps domains remove myapp.bounded.page` on a slug returns
 > **`404 domain_not_found`**, which reads like the slug is unmanaged rather than
 > like you used the wrong command. Free a slug with
-> `openapps domains slug --release --app-id <id>`.
+> `npx openapps domains slug --release --app-id <id>`.
 
 ### Moving a slug to a different app
 
@@ -61,7 +61,7 @@ you. To keep a stable public URL across a rebuild, MOVE the slug in one step wit
 `--from` - do NOT release it and re-claim it:
 
 ```bash
-openapps domains slug myapp --app-id <new-app-id> --from <old-app-id>
+npx openapps domains slug myapp --app-id <new-app-id> --from <old-app-id>
 ```
 
 Both apps must be yours (the move authorizes the source app as well as the
@@ -75,7 +75,7 @@ party hands over those sessions. `--release` is for genuinely giving a name up:
 the freed label is reserved against re-claim by anyone else for a while, and only
 the account that released it can take it straight back.
 
-Check who holds it with `openapps domains list --app-id <old-app-id>`; a slug is
+Check who holds it with `npx openapps domains list --app-id <old-app-id>`; a slug is
 listed there as `vanity slug`, distinct from any custom domains beneath it.
 
 ## 2. Custom domain — `app.yourdomain.com` (Pro)
@@ -83,10 +83,10 @@ listed there as `vanity slug`, distinct from any custom domains beneath it.
 Bring a domain you own. OpenApps issues the SSL cert; you add DNS records.
 
 ```bash
-openapps domains add app.yourdomain.com --app-id <id>
+npx openapps domains add app.yourdomain.com --app-id <id>
 # → prints the DNS records to add at your registrar (CNAME + ownership/SSL TXT)
-openapps domains list --app-id <id>      # check status: pending → active
-openapps domains remove app.yourdomain.com --app-id <id>
+npx openapps domains list --app-id <id>      # check status: pending → active
+npx openapps domains remove app.yourdomain.com --app-id <id>
 ```
 
 Flow:
@@ -106,7 +106,7 @@ Notes:
 - **Frontend only for now** — custom domains serve your app's static site. Use
   the app's OpenApps API hostname for API calls.
 - **Same privacy gate** — custom domains inherit the app's hosted-site privacy
-  setting. `openapps site privacy private|public --app-id <id>` changes the
+  setting. `npx openapps site privacy private|public --app-id <id>` changes the
   vanity slug and active custom-domain static hosts together.
 - **Root/apex domains** — the CLI may ask for a CNAME at `@`; if your DNS host
   rejects apex CNAMEs, use a subdomain like `www` or move the zone's nameservers
@@ -119,7 +119,7 @@ Do not leave the user waiting after they have entered the records.
 Run the app-scoped status command again:
 
 ```bash
-openapps domains list --app-id <id> --env production --json
+npx openapps domains list --app-id <id> --env production --json
 ```
 
 Use the app's actual environment instead of `production` when applicable.

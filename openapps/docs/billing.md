@@ -57,16 +57,16 @@ Do not speculate beyond published pricing or present unpublished cost details.
 Use the public surfaces:
 
 ```bash
-openapps billing status
-openapps billing checkout --plan pro          # or --plan team
-openapps billing topup --credits 100          # buy account credits; review checkout terms
-openapps billing portal
+npx openapps billing status
+npx openapps billing checkout --plan pro          # or --plan team
+npx openapps billing topup --credits 100          # buy account credits; review checkout terms
+npx openapps billing portal
 ```
 
 Checkout and top-up wait for the payment to be APPLIED and say whether it
 landed; a completed Stripe checkout is not yet an applied plan.
 
-`openapps billing status` shows the authoritative account credit pool when available.
+`npx openapps billing status` shows the authoritative account credit pool when available.
 In JSON, use `.credits.pool.available` for available account credits and `.credits.pool.reserved` for held credits.
 `billingModel: "pool"` responses omit the retired split-bucket fields.
 `creditPolicy.grant` describes the included offer and its restrictions, not additional available funds.
@@ -76,7 +76,7 @@ Retry the status read later, and do not initiate another payment to recover one 
 Checkout refuses a known ledger outage, but a failure after the payment page opens can still delay settlement.
 Use the original checkout's settlement check and wait for applied credit before retrying paid work.
 
-`openapps billing status` reports the account's daily project-create limit.
+`npx openapps billing status` reports the account's daily project-create limit.
 In JSON, read `.limits.maxProjectCreatesPerDay`; `-1` means no daily limit.
 A platform-issued limit grant is reflected in that effective value, but
 the raw operator override record and operator metadata are never returned.
@@ -90,7 +90,7 @@ A payer with no available credits gets no run: the caller receives `402 insuffic
 A Free account's monthly courtesy credit is minted on the first run of the month before that check, so an idle Free app wakes up on its own.
 When billing itself cannot answer, the caller receives `503` with `services_billing_unavailable`, `courtesy_renewal_unavailable`, `ledger_capacity_exhausted` or `admission_protocol_unavailable` and a `Retry-After`; that is an outage, not a balance, and the run is safe to retry.
 Per-app usage caps still refuse with `429 usage_cap_exceeded` before any money moves.
-A refused run is not a failed run: it is reported separately in analytics (`function_refused`) and never appears in `openapps functions logs` as an execution.
+A refused run is not a failed run: it is reported separately in analytics (`function_refused`) and never appears in `npx openapps functions logs` as an execution.
 A run's own datastore reads and writes are covered by that run's reservation, so a running function is never cut off mid-flight by a balance that reached zero while it was executing.
 The exact caller-facing codes are listed in [public functions](../../openapps-backend/docs/public-functions.md#refusals---nothing-ran-nothing-was-charged).
 
@@ -162,7 +162,7 @@ Deleting apps never frees the window; a creation counts from its birth time
 until it leaves the 24-hour window.
 
 When project creation returns `429 project_daily_limit_exceeded` (every
-creation lane, including `openapps create`, `openapps deploy --create`, and
+creation lane, including `npx openapps create`, `npx openapps deploy --create`, and
 `ctx.apps.create`, refuses with this same code):
 
 1. Do not retry the create operation before the window reopens.
@@ -177,17 +177,17 @@ creation lane, including `openapps create`, `openapps deploy --create`, and
    an upgrade or an operator change can.
 3. Tell the user when the next create fits, using `resetsAtMs`.
    The server's `message` already says this in plain words.
-4. If the user does not want to wait, run `openapps apps list --json` to
+4. If the user does not want to wait, run `npx openapps apps list --json` to
    inspect every app the active account owns or collaborates on.
    Its safe fields are `appId`, `name`, `environment`, `protocol`, and
    `sitePrivate`.
-   Before reusing an app, run `openapps access --app-id <id> --json` and
+   Before reusing an app, run `npx openapps access --app-id <id> --json` and
    confirm both ownership or deploy rights and protocol compatibility.
-   Reuse only the exact app the user approves, and run `openapps deploy`
+   Reuse only the exact app the user approves, and run `npx openapps deploy`
    without `--create`.
 5. Never delete or repurpose a project to work around the limit: deleting
    does not free the window, and a repurposed app is a lost app.
-6. If the response says the key is unlinked, recommend `openapps link --email
+6. If the response says the key is unlinked, recommend `npx openapps link --email
    <their email>` first so the CLI key and web account share one account
    window.
 7. If the user wants the limit gone, help them upgrade to Pro through the

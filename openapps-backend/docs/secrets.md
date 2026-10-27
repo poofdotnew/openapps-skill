@@ -11,7 +11,7 @@ A secret has **two halves, kept apart on purpose**:
 1. **DECLARE the name** in your `bounded.manifest` (`secrets` block). This is part
    of your deployed backend configuration. **Never put the value here.**
 2. **SET the value** with the CLI without putting the value in argv:
-   `printf '%s' "$VALUE" | openapps secret put NAME --value-stdin --app-id <id>`.
+   `printf '%s' "$VALUE" | npx openapps secret put NAME --value-stdin --app-id <id>`.
    Values are stored per app and are **never returned by any API** (`list` shows names only).
 
 Then your code reads it. That's it.
@@ -19,7 +19,7 @@ Then your code reads it. That's it.
 **Never import a credential file into a function instead.** A key file bundled
 into a function is hardcoded into a stored artifact; the CLI refuses to package
 one (a PEM key, a `service_account` JSON, an OpenApps credentials file, or a raw
-keypair array) and points you back here. Put the value with `openapps secret put`
+keypair array) and points you back here. Put the value with `npx openapps secret put`
 and read it from `ctx.env` - the value stays in the app secret store and is
 resolved at invoke time. See [functions.md](functions.md).
 
@@ -35,8 +35,8 @@ resolved at invoke time. See [functions.md](functions.md).
 ```
 Set the value, deploy:
 ```bash
-openapps runtime deploy ./ --app-id <id>
-printf '%s' "$OPENAI_KEY" | openapps secret put OPENAI_KEY --value-stdin --app-id <id>
+npx openapps runtime deploy ./ --app-id <id>
+printf '%s' "$OPENAI_KEY" | npx openapps secret put OPENAI_KEY --value-stdin --app-id <id>
 ```
 Read it in your code via `ctx.secrets.get`:
 ```ts
@@ -53,7 +53,7 @@ apps need.
 ## Which surface accepts which form
 
 The forms below (egress-bound objects, `uses`) belong to the runtime lane's
-`bounded.manifest` (`openapps runtime deploy`). A policy `functions.<name>.secrets`
+`bounded.manifest` (`npx openapps runtime deploy`). A policy `functions.<name>.secrets`
 entry is different: it accepts bare `UPPER_SNAKE_CASE` names ONLY, and the function
 reads each one with `ctx.secrets.get("NAME")`. Putting an object there fails deploy
 with `secret "[object Object]" must be an UPPER_SNAKE_CASE name (e.g. "STRIPE_KEY")`;
@@ -115,7 +115,7 @@ Here `GH_TOKEN` is injected on calls to api.github.com **and** readable via `ctx
 (`"in"` is the in-process usage; an egress object is an egress usage.)
 
 > **Footgun:** adding `"in"` to an egress secret makes it readable by your code again — so the
-> "value never enters your code" guarantee no longer holds for that secret. `openapps runtime
+> "value never enters your code" guarantee no longer holds for that secret. `npx openapps runtime
 > deploy` prints a `warnings` line when a secret is both. If you want the egress-only guarantee,
 > declare it egress-**only** (no `"in"`).
 
@@ -123,7 +123,7 @@ Here `GH_TOKEN` is injected on calls to api.github.com **and** readable via `ctx
 
 | You need… | Declare | Read in code? |
 |---|---|---|
-| A secret in a policy `functions.<name>` entry (`openapps functions deploy`) | `"NAME"` bare, names only; objects are refused | Yes, `ctx.secrets.get("NAME")`; scope reach with the function's `egress` key |
+| A secret in a policy `functions.<name>` entry (`npx openapps functions deploy`) | `"NAME"` bare, names only; objects are refused | Yes, `ctx.secrets.get("NAME")`; scope reach with the function's `egress` key |
 | An API key for an HTTP service (Stripe, OpenAI over HTTP, GitHub) | `{ name, egress: "<host>" }` | No — OpenApps injects it on matching outbound requests (safest) |
 | To use the value yourself (sign a JWT, a non-HTTP SDK, custom logic) | `"NAME"` (bare) or `{ name, in: true }` | Yes — `ctx.secrets.get("NAME")` |
 | Both | `{ name, uses: [ {egress:"<host>"}, "in" ] }` | Yes, and injected on egress |
@@ -134,15 +134,15 @@ your code truly needs the raw value. In a policy function there is only the bare
 ## CLI
 
 ```bash
-printf '%s' "$STRIPE_KEY" | openapps secret put STRIPE_KEY --value-stdin --app-id <id>
-openapps secret put STRIPE_KEY --value-env STRIPE_KEY --app-id <id>
-openapps secret put STRIPE_KEY --app-id <id>       # interactive hidden prompt
-openapps secret list --app-id <id>                 # names only — never values
-openapps secret rm STRIPE_KEY --app-id <id>        # remove
-printf '%s' "$STRIPE_TEST_KEY" | openapps secret put STRIPE_KEY --preview --value-stdin --app-id <id>
-openapps secret rm STRIPE_KEY --preview --app-id <id>
-printf '%s' "$EXPO_TOKEN" | openapps secret put EXPO_TOKEN --agent --host api.expo.dev --value-stdin --app-id <id>
-openapps secret list --agent --app-id <id>
+printf '%s' "$STRIPE_KEY" | npx openapps secret put STRIPE_KEY --value-stdin --app-id <id>
+npx openapps secret put STRIPE_KEY --value-env STRIPE_KEY --app-id <id>
+npx openapps secret put STRIPE_KEY --app-id <id>       # interactive hidden prompt
+npx openapps secret list --app-id <id>                 # names only — never values
+npx openapps secret rm STRIPE_KEY --app-id <id>        # remove
+printf '%s' "$STRIPE_TEST_KEY" | npx openapps secret put STRIPE_KEY --preview --value-stdin --app-id <id>
+npx openapps secret rm STRIPE_KEY --preview --app-id <id>
+printf '%s' "$EXPO_TOKEN" | npx openapps secret put EXPO_TOKEN --agent --host api.expo.dev --value-stdin --app-id <id>
+npx openapps secret list --agent --app-id <id>
 ```
 
 A preview of an app (`bounded previews create`) starts with none of the app's values.
@@ -151,21 +151,21 @@ The app's own values never reach a preview, and the app itself never reads a pre
 Code on a preview can read its preview values, so set test keys there.
 Removing a preview value does not take it out of a preview that already received it.
 A frontend running on a local dev server calls whichever app its app id names, so its functions read that app's keys: give it a preview's app id to use the preview's test keys instead of the live ones.
-`openapps secret list` names the preview values separately, and marks any key the app's OpenApps agent donated; a value you set under that name replaces the agent's.
+`npx openapps secret list` names the preview values separately, and marks any key the app's OpenApps agent donated; a value you set under that name replaces the agent's.
 `--agent` puts a key on the app's OpenApps agent for its own work, such as submitting the app to a store, instead of on the app: it is sealed on the agent's computer, the agent writes `{{secret:NAME}}`, and the network adds the key only on requests to the `--host` names given (at least one).
 The agent never sees the value, and the key stays labelled as yours, even in a copy the agent gives the app.
 `--agent` and `--preview` cannot be combined.
 A server-rendered app reads its secrets as `process.env.NAME` once its server manifest lists them ([server apps](../../openapps-frontend/docs/server-apps.md)).
 Listing, setting and removing keys takes the same access as deploying the app's functions (`functions:deploy`).
 Values are write-only over the API: there is no command that prints a secret value back.
-The older `openapps secret put NAME VALUE` form still works for compatibility, but it warns because
+The older `npx openapps secret put NAME VALUE` form still works for compatibility, but it warns because
 argv values can appear in shell history and process listings.
 
 ## Rules & limits (so nothing surprises you)
 
 - Names: `[A-Za-z_][A-Za-z0-9_]{0,63}` (env-var style). Value ≤ 8 KB. ≤ 100 secrets per app.
 - Secrets are **per-app and isolated** — one app can only ever read/inject its own.
-- **A value is set ONCE per app**, not per handler. `openapps secret put STRIPE_KEY --value-stdin --app-id X`
+- **A value is set ONCE per app**, not per handler. `npx openapps secret put STRIPE_KEY --value-stdin --app-id X`
   is read by every declared backend component and every Function in app X — no
   copying. The manifest (or a function's `secrets` block) declares the *name* once.
   A Function resolves the value from the SAME per-app store at invoke time, so
@@ -185,7 +185,7 @@ argv values can appear in shell history and process listings.
 - The declaration is part of the deployed backend configuration; changing it is a
   new deploy. The **values** are set separately and can be rotated anytime with
   `secret put` (no redeploy).
-- A standalone `openapps functions deploy` **preserves** a declaration you do not
+- A standalone `npx openapps functions deploy` **preserves** a declaration you do not
   restate: omitting `--secret` leaves the function's existing `secrets` block
   intact, exactly like `actAs`, `webhook` and every other declared capability. (It
   did not always: `secrets` was once the one key excluded from that carry-forward,

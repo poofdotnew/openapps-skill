@@ -25,17 +25,17 @@ without a person clicking through a console.
 export HOME="$AGENT_HOME"                               # per-agent dir → its own ~/.bounded/credentials
 # …or supply the key directly (base58 ed25519), no file needed:
 # export BOUNDED_PRIVATE_KEY="<base58-secret>"
-openapps whoami                                          # prints the agent's address
+npx openapps whoami                                          # prints the agent's address
 
 # 2. Generate a policy from the task description (see the generation guide)
-openapps init                                            # or write policy.json directly
+npx openapps init                                            # or write policy.json directly
 
 # 3. Deploy it — an invalid policy is refused before anything changes
-openapps deploy ./policy.json --create --name agent-ledger   # creates app, prints <appId>
+npx openapps deploy ./policy.json --create --name agent-ledger   # creates app, prints <appId>
 
 # 4. Exercise the data plane
-openapps data set --app-id <appId> --path agents/<agent-id>/spend/s1 --data '{"amount":60}'
-openapps data get --app-id <appId> --path agents/<agent-id>/spend
+npx openapps data set --app-id <appId> --path agents/<agent-id>/spend/s1 --data '{"amount":60}'
+npx openapps data get --app-id <appId> --path agents/<agent-id>/spend
 ```
 
 > Run each agent under a **distinct** `HOME` or `BOUNDED_PRIVATE_KEY` so
@@ -43,12 +43,12 @@ openapps data get --app-id <appId> --path agents/<agent-id>/spend
 > That per-agent key *owns every app the agent creates* — lose it and the apps
 > are unrecoverable. Link or back it up: [../docs/key-and-account-safety.md](../../openapps-deploy/docs/key-and-account-safety.md).
 
-> **Keypair data commands need a policy opt-in.** A keypair `openapps data`
+> **Keypair data commands need a policy opt-in.** A keypair `npx openapps data`
 > call opens a sign-in-with-Solana session, and the issuer only mints one when
 > the app's deployed policy carries `"auth": { "wallets": true }` — include it
 > in the generated policy for this flow, or the step-4 writes fail with
 > "wallet login is not enabled". A human driving the CLI under a web login
-> (`openapps login`) needs no such block on a CLOUD app: web sessions run the
+> (`npx openapps login`) needs no such block on a CLOUD app: web sessions run the
 > data plane as-is there (see [data-plane.md](data-plane.md)). An OpenApps Local
 > app is keypair-only, so it needs the block either way.
 
@@ -101,7 +101,7 @@ read-check-write race for the agent to lose.
 
 ## Reading and writing: CLI or SDK
 
-- **CLI** (`openapps data ...`) is the simplest path for a shell-driven agent —
+- **CLI** (`npx openapps data ...`) is the simplest path for a shell-driven agent —
   every operation is one command, `--json` makes output machine-parseable, and
   errors come back as JSON too. See [../docs/cli-reference.md](../../openapps-deploy/docs/cli-reference.md).
 - **SDK** (`@bounded-sh/server`) suits an agent already running in Node: one
@@ -140,14 +140,14 @@ write). One atomic batch is not a TOCTOU race; a sequence of `set`s is.
 
 ## Hand the login link to your user
 
-During `openapps link --no-browser` the CLI prints a verification URL of the form
+During `npx openapps link --no-browser` the CLI prints a verification URL of the form
 `https://dashboard.bounded.sh/link?user_code=XXXX` **plus a device fingerprint**. Relay
 **both** to your user and tell them to open the URL and approve only if the
 fingerprint shown in the browser matches the one the CLI printed (anti-phishing
 check).
 
 The same relay applies to **mainnet policy deploys on a web login**. Those need the
-owner wallet's signature, which lives in the browser, so `openapps deploy` prints an
+owner wallet's signature, which lives in the browser, so `npx openapps deploy` prints an
 approval URL plus a fingerprint and then waits (it fails cleanly if nobody approves).
 Relay both, same rule: approve only if the fingerprint on the page matches the one
 the CLI printed. Every deploy asks again - it is not a one-time setup - and devnet
@@ -156,7 +156,7 @@ and offchain deploys never ask at all. See the **openapps-onchain** skill.
 ## Related
 
 - [../docs/policy-generation-guide.md](../docs/policy-generation-guide.md) — turning the task into an enforced policy
-- [../docs/cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — every `openapps data` command
+- [../docs/cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — every `npx openapps data` command
 - [building-a-backend.md](building-a-backend.md) — the `@bounded-sh/server` path
 - [capabilities-and-limits.md](../../openapps/guides/capabilities-and-limits.md) — what OpenApps does and doesn't do
 - [../docs/auth.md](../../openapps-frontend/docs/auth.md) — CLI/admin auth sources, including wallet/keypair mode

@@ -53,7 +53,7 @@ afterward, ask the user to run it in their own terminal, then continue.
    that must not change), `bound` (hard field ceilings and floors), and
    `tenantTag`/`tenantEdge` (tenant isolation). `windowSum` is a separate
    runtime-maintained aggregate.
-2. `openapps deploy --create --name <name>` validates, compiles, and pushes the policy; an invalid policy is refused before anything changes.
+2. `npx openapps deploy --create --name <name>` validates, compiles, and pushes the policy; an invalid policy is refused before anything changes.
    If it returns `deploy_in_progress` with an `operationId`, the verified app
    owner runs the exact emitted `recoveryCommand` with unchanged policy inputs.
    A `409` naming `onchain_creation_pending` (or `onchain_creation_unreadable`
@@ -80,15 +80,15 @@ afterward, ask the user to run it in their own terminal, then continue.
    unavailable state stays locked and pollable, while partial state requires
    manual intervention.
 3. For a hosted web app, build static assets and run
-   `openapps site deploy ./dist --app-id <id>`. Then test one complete user flow
+   `npx openapps site deploy ./dist --app-id <id>`. Then test one complete user flow
    and one intentional boundary rejection. React Native binaries stay in the
    normal mobile release toolchain.
-   Retain the receipt `url`, or run `openapps domains list --app-id <id> --env <environment> --json` and use the JSON `slugUrl`; `openapps apps inspect` proves policy/runtime publication and does not return a hosted URL.
+   Retain the receipt `url`, or run `npx openapps domains list --app-id <id> --env <environment> --json` and use the JSON `slugUrl`; `npx openapps apps inspect` proves policy/runtime publication and does not return a hosted URL.
 
 Rejections at runtime are fail-closed: HTTP 409 for a violated invariant, 403 for
 a denied write or invoke rule, and 500 `rule_evaluation_failed` when the rule
 could not be evaluated at all (no verdict; not a denial and not a retryable
-`409`). Read `openapps decisions` for the cause; do not assume a retry will fail.
+`409`). Read `npx openapps decisions` for the cause; do not assume a retry will fail.
 
 ### SDKs (scope `@bounded-sh`)
 
@@ -102,8 +102,8 @@ npm i @bounded-sh/client   # or @bounded-sh/server
 ### Notes
 
 - All packages are under `@bounded-sh/*`. Bare `openapps` on npm is unrelated.
-- `openapps create "<prompt>"` hands the whole app to OpenApps' build agent and
-  `openapps edit "<prompt>"` iterates on it, with `openapps builds` to watch,
+- `npx openapps create "<prompt>"` hands the whole app to OpenApps' build agent and
+  `npx openapps edit "<prompt>"` iterates on it, with `npx openapps builds` to watch,
   cancel, or decide a gate. That is a different path from the flow above: use it
   when the user wants the platform to write the app, not when you are writing it.
 - Functions are the trusted escape hatch: `ctx.ai.run`, `ctx.services`,

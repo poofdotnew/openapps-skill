@@ -74,8 +74,8 @@ The vault exposes `get`, `getMany`, `set`, `setMany`, `setFile`,
 the signing methods — same shapes as
 [../docs/sdk-reference.md](../../openapps-frontend/docs/sdk-reference.md). Collection
 paging is built into `get(path, { limit, cursor })`; there is no `getPage`.
-Collaborators are control-plane state managed with `openapps share`,
-`openapps collaborators`, and `openapps unshare`, not wallet-client methods.
+Collaborators are control-plane state managed with `npx openapps share`,
+`npx openapps collaborators`, and `npx openapps unshare`, not wallet-client methods.
 
 ## Receiving webhooks
 

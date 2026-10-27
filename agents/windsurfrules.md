@@ -48,7 +48,7 @@ Flow:
   cumulative outflow ≤ inflow), `conserve` (balances and supply that must not
   change), `bound` (hard field ceilings and floors), and `tenantTag`/`tenantEdge`
   (tenant isolation). `windowSum` is a separate runtime-maintained aggregate.
-- `openapps deploy --create --name <name>` validates, compiles, and pushes; an
+- `npx openapps deploy --create --name <name>` validates, compiles, and pushes; an
   invalid policy is refused before anything changes.
   If it returns `deploy_in_progress` with an `operationId`, the verified app
   owner runs the exact emitted `recoveryCommand` with unchanged policy inputs.
@@ -76,17 +76,17 @@ Flow:
   unavailable state stays locked and pollable, while partial state requires
   manual intervention.
 - For hosted web, build static assets and run
-  `openapps site deploy ./dist --app-id <id>`. Test a complete user flow and an
+  `npx openapps site deploy ./dist --app-id <id>`. Test a complete user flow and an
   intentional boundary rejection. React Native packaging stays external.
-  Retain the receipt `url`, or run `openapps domains list --app-id <id> --env <environment> --json` and use the JSON `slugUrl`; `openapps apps inspect` proves policy/runtime publication and does not return a hosted URL.
+  Retain the receipt `url`, or run `npx openapps domains list --app-id <id> --env <environment> --json` and use the JSON `slugUrl`; `npx openapps apps inspect` proves policy/runtime publication and does not return a hosted URL.
 
 Runtime rejections are fail-closed: 409 for a violated invariant, 403 for a denied
 write or invoke rule, and 500 `rule_evaluation_failed` when the rule could not be
 evaluated at all (no verdict; not a denial and not a retryable `409`). Read
-`openapps decisions` for the cause; do not assume a retry will fail.
+`npx openapps decisions` for the cause; do not assume a retry will fail.
 
-`openapps create "<prompt>"` hands the whole app to OpenApps' build agent and
-`openapps edit "<prompt>"` iterates on it; `openapps builds list|watch|cancel|gate`
+`npx openapps create "<prompt>"` hands the whole app to OpenApps' build agent and
+`npx openapps edit "<prompt>"` iterates on it; `npx openapps builds list|watch|cancel|gate`
 steers the run. Use that path when the user wants the platform to write the app,
 not when you are writing it.
 

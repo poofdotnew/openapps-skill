@@ -24,11 +24,11 @@ caches it at **`~/.bounded/sessions.json`** keyed by `"<appId>:<address>"` with
 fields `{ id_token, access_token, refresh_token, wallet, expires_at }`.
 
 > **This recipe is the KEYPAIR lane.** Data commands also run under a web login
-> (`openapps login`), but that lane mints an app token for your EMAIL identity -
+> (`npx openapps login`), but that lane mints an app token for your EMAIL identity -
 > it has no `@user.address`, and it caches under `"<appId>:web:<userId>"`, so
 > the address-keyed lookup in step 2 will not find it and will refuse rather
 > than substitute another identity. Select the keypair lane first with
-> `openapps account use --global` (or export `BOUNDED_PRIVATE_KEY`), and note
+> `npx openapps account use --global` (or export `BOUNDED_PRIVATE_KEY`), and note
 > the app's policy must enable wallet login: `"auth": { "wallets": true }`.
 
 So the whole flow is: **CLI mints the token → shape it into those two keys →
@@ -47,7 +47,7 @@ Any read forces the CLI to sign in and cache the session for that app:
 
 ```bash
 # uses ~/.bounded/credentials, or export BOUNDED_PRIVATE_KEY=<bs58 secret> first
-openapps data get --app-id <APP_ID> --path __login_probe__ --limit 1 --json >/dev/null
+npx openapps data get --app-id <APP_ID> --path __login_probe__ --limit 1 --json >/dev/null
 # session now cached at ~/.bounded/sessions.json under "<APP_ID>:<address>"
 ```
 

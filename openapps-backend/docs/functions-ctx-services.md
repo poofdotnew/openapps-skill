@@ -26,7 +26,7 @@ export default async function weather(args, ctx) {
 }
 ```
 
-Slugs are what `openapps services search --json` returns; the ones above are
+Slugs are what `npx openapps services search --json` returns; the ones above are
 illustrative. Never invent a slug: search first, then describe the exact slug
 you will call.
 
@@ -38,7 +38,7 @@ Every catalog item carries a `readiness`, and it decides what you can do today:
 |---|---|---|
 | `live` | A managed action on OpenApps. | `ctx.services.invoke("<slug>", args, { idempotencyKey })` |
 | `callable` | An API that prices itself with x402 on Solana. OpenApps pays it per call from the platform relay wallet; no approval, no key. | `ctx.services.invoke("X402_FETCH", { url, method, body, maxUsd }, { idempotencyKey })` using the item's `invocation.endpointUrl` |
-| `requestable` | Known to the catalog but not on OpenApps yet. | File it once: `openapps services request "<what you need>"`, then build without it |
+| `requestable` | Known to the catalog but not on OpenApps yet. | File it once: `npx openapps services request "<what you need>"`, then build without it |
 | `disabled` | OpenApps RUNS it, but it is switched off here: a steward turned the action off, or the platform holds no credential for the provider. `unavailableReason` says which. | Do not design around it and do not file a request - it already exists. Tell the operator what `unavailableReason` names, and build the path that does not need it |
 
 A `disabled` item is deliberately still LISTED. An unconfigured provider used to
@@ -60,10 +60,10 @@ are on.
 ### Requesting a capability OpenApps does not have
 
 ```sh
-openapps services request "current weather for a lat/lng pair, refreshed hourly" \
+npx openapps services request "current weather for a lat/lng pair, refreshed hourly" \
   --title "Current weather by coordinates" --desired-action "Read current weather"
-openapps services status                 # every request filed under this account
-openapps services status cap_<id>        # one request
+npx openapps services status                 # every request filed under this account
+npx openapps services status cap_<id>        # one request
 ```
 
 A request is filed under the signed-in account with the Capability Hub; a
@@ -135,10 +135,10 @@ and never re-runs the provider: a lost poll re-reads the same job.
   credit" from "no allocation" - plus `remainingMicroUsd` and
   `attemptedMicroUsd`.
 - **CLI discovery:** during build, agents can run
-  `openapps services search "<query>" --json` and
-  `openapps services describe <toolkit-or-tool-slug> --json` to inspect the same
+  `npx openapps services search "<query>" --json` and
+  `npx openapps services describe <toolkit-or-tool-slug> --json` to inspect the same
   managed catalog before writing function or agent code; both print each
-  item's readiness, and `openapps services request` files what is missing.
+  item's readiness, and `npx openapps services request` files what is missing.
 - **Two use cases:** search/describe are for build-time and agent planning;
   invoke is the runtime tool call. An agent loop can expose a small wrapper around
   `ctx.services.invoke` as one of its tools.

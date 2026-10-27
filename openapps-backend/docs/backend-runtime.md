@@ -44,7 +44,7 @@ my-agent/
 
 - `kind`: `"agent"` for `onInvoke`/`onSchedule`, or `"backend"` for a `fetch`
   handler. Both are invoked the same way: `POST /agents/<name>/<session>` on
-  the app's API host (or `openapps runtime invoke`) with an OpenApps app token.
+  the app's API host (or `npx openapps runtime invoke`) with an OpenApps app token.
   The runtime does **not** serve arbitrary HTTP paths; for a REST route, a public
   JWKS, or any endpoint machines call without a session, declare a
   [public function](public-functions.md) instead.
@@ -60,9 +60,9 @@ my-agent/
   hop rather than followed.
 - `aiCapUSD`: app-level spend cap for `ctx.ai`.
 - `secrets`: names declared in the manifest. Set values with
-  `openapps secret put`.
+  `npx openapps secret put`.
 
-Use `openapps runtime init` to scaffold the current manifest format.
+Use `npx openapps runtime init` to scaffold the current manifest format.
 
 ## Public `ctx` Surface
 
@@ -78,8 +78,8 @@ Use `openapps runtime init` to scaffold the current manifest format.
 | `ctx.identity` | read the acting user/service context |
 | `ctx.log` | write tagged runtime logs |
 
-Use `openapps services search "<query>" --json` and
-`openapps services describe <toolkit-or-tool-slug> --json` while building to find
+Use `npx openapps services search "<query>" --json` and
+`npx openapps services describe <toolkit-or-tool-slug> --json` while building to find
 the right managed API/tool shape. Runtime code can also use
 `ctx.services.search` and `ctx.services.describe` for agent planning. Use
 `ctx.services.invoke` at runtime when OpenApps manages that provider. Invoke is
@@ -229,17 +229,17 @@ Recommended pattern:
 Deploy backend runtime code with the OpenApps CLI for an app you own:
 
 ```bash
-openapps runtime init my-agent
+npx openapps runtime init my-agent
 cd my-agent
-openapps runtime deploy --app-id <id>
-openapps runtime info --app-id <id>
-openapps runtime invoke my-agent --app-id <id> --data '{"name":"Amit"}'
+npx openapps runtime deploy --app-id <id>
+npx openapps runtime info --app-id <id>
+npx openapps runtime invoke my-agent --app-id <id> --data '{"name":"Amit"}'
 ```
 
 Use the current CLI help for exact flags:
 
 ```bash
-openapps runtime --help
+npx openapps runtime --help
 ```
 
 ## Related

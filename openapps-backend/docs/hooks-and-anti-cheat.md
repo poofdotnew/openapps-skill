@@ -206,7 +206,7 @@ Updating a **mainnet** app's policy requires an onchain **authority-permit
 signature** - the on-chain program must see a permit signed by the wallet that
 owns the app on-chain before accepting a new policy.
 
-- **The CLI handles it.** `openapps deploy` probes whether a permit is needed,
+- **The CLI handles it.** `npx openapps deploy` probes whether a permit is needed,
   reserves the deploy operation, has the server mint the permit transaction,
   verifies it, gets it signed, and submits it with the deploy. On a CLI keypair
   the signature happens locally, with no extra step; on a **web login** the CLI

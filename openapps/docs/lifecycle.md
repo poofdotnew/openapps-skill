@@ -9,7 +9,7 @@ The agent is a Hermes agent with its own computer, and it exists from the moment
 An app starts one of two ways:
 
 - **From scratch:** the creator creates it on openapps.xyz, and the agent builds the first version.
-- **From an existing OpenApps app:** the creator hands an app they already built (with `openapps init`, `openapps deploy`, and `openapps site deploy`) to a new agent.
+- **From an existing OpenApps app:** the creator hands an app they already built (with `npx openapps init`, `npx openapps deploy`, and `npx openapps site deploy`) to a new agent.
   The agent's computer works from a clone of the app's synced source, so the handover is refused with `user_app_source_not_synced` until a deploy with source lands.
   An app that already belongs to an agent is refused with `user_app_already_attached`, and one whose billing is set to another account or pool with `user_app_billing_bound`.
   An app already on Solana mainnet under the owner's own wallet must first transfer its on-chain owner role to OpenApps custody (`user_app_custody_transfer_required`): one transaction the owner's wallet signs, and the app itself stays the owner's.
@@ -22,7 +22,7 @@ The app that goes on sale, and the app its holders later govern, is the same app
 The agent tests a change on a preview: a separate app on the test network, with its own app id, data and address.
 Values that differ between the live app and its previews belong in two places:
 
-- **Keys** go in secrets. The live app reads the value set with `openapps secret put NAME`, and every preview reads the test value set with `openapps secret put NAME --preview`; a preview never receives the live value.
+- **Keys** go in secrets. The live app reads the value set with `npx openapps secret put NAME`, and every preview reads the test value set with `npx openapps secret put NAME --preview`; a preview never receives the live value.
 - **Everything else** that differs (a network name, an RPC host, addresses, caps, a schedule's cadence) goes in policy `constants` with an [`environments` block](../../openapps-deploy/docs/environments.md). The base `constants` hold the test values, and the entry whose `appId` is the live app holds the live ones.
 
 A release applies the entry whose `appId` is the live app: its constants, its schedule cadence, and the functions scoped to it.
@@ -116,7 +116,7 @@ An app that publishes while the request reads it is refused with `oapp_opening_a
 The declaration has exact keys and nothing else: `requestedSlug`, `storefront`, `constitution`, `openingIntent`, and `acceptedTerms`.
 The constitution has exactly seven text sections (`preamble`, `purpose`, `objectives`, `tools`, `skills`, `workflow`, `safetyRules`), each non-empty and at most 4000 bytes.
 It carries no AI settings: the platform seals the agent's own saved models and limits.
-`GET /app/<mainAppId>/oapp-source-status` gives the `headRev` and privacy digest the `openingIntent` names, and `openapps oapp preflight` is the dry run of what the request reads off the app: the safety checks, the synced source, and the served site ([preflight](preflight.md)).
+`GET /app/<mainAppId>/oapp-source-status` gives the `headRev` and privacy digest the `openingIntent` names, and `npx openapps oapp preflight` is the dry run of what the request reads off the app: the safety checks, the synced source, and the served site ([preflight](preflight.md)).
 
 Once the sale has started, `GET /public/oapps/<rootAppId>/opening` reports it: `phase` is `sale`, `open`, or `returned`, and it answers 404 `oapp_opening_not_found` before that.
 
@@ -139,12 +139,12 @@ Use that venue's Devnet USDC and explorer links; a Devnet balance cannot pay for
 
 The agent works from the app's synced source, and so does the request to open: the app must serve a release whose source is synced.
 Source rides the deploy; there is no separate register or sync machinery.
-`openapps init` turns it on for every new project; an older project enables it once in `bounded.json`:
+`npx openapps init` turns it on for every new project; an older project enables it once in `bounded.json`:
 
 ```json
 { "sourcePush": true }
 ```
 
-With that set, every `openapps site deploy` (and `openapps deploy`) also pushes the project source tree to the app's cloud source repository and prints `source synced: <sha>`.
+With that set, every `npx openapps site deploy` (and `npx openapps deploy`) also pushes the project source tree to the app's cloud source repository and prints `source synced: <sha>`.
 One-off control: `--with-source` / `--no-source` on the deploy commands.
 An app headed to OpenApps must deploy with source ON, and the source that ships must be the tree that produced the deployed site.

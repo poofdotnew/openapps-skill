@@ -275,7 +275,7 @@ deletes, set a real `delete` rule in your policy (the default scaffolds
 `"delete": "false"`, which blocks them).
 
 **From the CLI** it's a dedicated command, not `set` with null (the CLI rejects a
-null body): `openapps data delete --app-id <id> --path <collection>/<id>` - same
+null body): `npx openapps data delete --app-id <id> --path <collection>/<id>` - same
 `delete`-rule enforcement. See [cli-reference.md](../../openapps-deploy/docs/cli-reference.md#data-delete).
 
 ### Server-resolved field values - `increment` / `serverTimestamp`
@@ -539,15 +539,15 @@ Collaborators (who may deploy/update an app's policy) are a **control-plane**
 concern, managed with the **CLI**, not the data-plane `@bounded-sh` SDK. Use:
 
 ```bash
-openapps share <walletAddress|email> --role developer|admin|viewer|billing --app-id <id> # add
-openapps collaborators --app-id <id>                                                    # list and resolve wallet address
-openapps unshare <walletAddress> --app-id <id>                                          # remove by wallet
+npx openapps share <walletAddress|email> --role developer|admin|viewer|billing --app-id <id> # add
+npx openapps collaborators --app-id <id>                                                    # list and resolve wallet address
+npx openapps unshare <walletAddress> --app-id <id>                                          # remove by wallet
 ```
 
 Only the owner may modify the list (enforced server-side). Email shares resolve
 to the invitee's OpenApps wallet and send an invite email when outbound email is
 configured. `unshare` accepts the resolved wallet address, not the email; obtain
-it from `openapps collaborators` before removing an email-invited collaborator.
+it from `npx openapps collaborators` before removing an email-invited collaborator.
 
 ## Auth (client) - `login` / `logout` / `getCurrentUser` / `useAuth`
 

@@ -196,7 +196,7 @@ const titleHits = await search("orgs/o1/docs", "revenue", { fields: ["title"], l
 
 ```bash
 # CLI
-openapps data search --app-id <id> --path orgs/o1/docs --query "quarterly revenue"
+npx openapps data search --app-id <id> --path orgs/o1/docs --query "quarterly revenue"
 ```
 
 - `query` is a required non-empty string (positional); `opts` takes `fields`

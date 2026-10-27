@@ -12,10 +12,10 @@ fail-closed and nothing partial is ever applied.
 
 ```bash
 # Write one document
-openapps data set --path "agents/a1/spend/s1" --data '{"amount": 60}'
+npx openapps data set --path "agents/a1/spend/s1" --data '{"amount": 60}'
 
 # Read one document
-openapps data get --path "agents/a1/spend/s1"
+npx openapps data get --path "agents/a1/spend/s1"
 
 # Atomic batch — bare array or {"documents":[...]}; each entry {path, document}
 cat > bundle.json <<'EOF'
@@ -24,14 +24,14 @@ cat > bundle.json <<'EOF'
   { "path": "accounts/bob",   "document": { "balance": 150 } }
 ]
 EOF
-openapps data set-many --from-json bundle.json
+npx openapps data set-many --from-json bundle.json
 ```
 
 ## Which identity runs a data command
 
 Data commands run as the CLI's selected account, and both account kinds work:
 
-- **Web login (the default identity, `openapps login`)** - works as-is on
+- **Web login (the default identity, `npx openapps login`)** - works as-is on
   **cloud apps** (staging and production).
   The CLI exchanges your platform web session for an app-pinned session
   server-side, so `@user.id` in rules is the SAME id you have when you sign in
@@ -46,7 +46,7 @@ Data commands run as the CLI's selected account, and both account kinds work:
   while web login is brokered by the shared staging issuer, so no app session
   can be minted for it. Local data commands use the keypair lane, and the CLI
   says so rather than looking retryable.
-- **CLI keypair (`openapps account use --global`)** - opens a
+- **CLI keypair (`npx openapps account use --global`)** - opens a
   sign-in-with-Solana session, so the app's deployed policy must enable wallet
   login: `"auth": { "wallets": true }`.
   Without it every keypair `data` command fails with "wallet login is not
@@ -61,7 +61,7 @@ By default every collection is **off-chain** (OpenApps' durable store) and `set`
 doc is about that off-chain write path.
 
 To store a collection **on Solana** instead, two things are required together:
-deploy the app with an on-chain protocol (`openapps deploy <policy.json> --create
+deploy the app with an on-chain protocol (`npx openapps deploy <policy.json> --create
 --name <n> --protocol realtime_devnet`, or a mainnet protocol) **and** mark **each**
 on-chain collection `"onchain": true`. The on-chain write path differs in ways that
 matter — a write is a **real Solana transaction**, reads come from an
@@ -123,7 +123,7 @@ unbounded storage or encode these numbers into application behavior.
 > A structured `decline.boundary.cause` also remains available when present,
 > while the formula, limits, raw message, and rule expression stay withheld.
 > Enforcement is identical either way, and the **full** reason is always written to the decision log
-> (`openapps decisions --denied-only`). Set per-collection or policy-global; see
+> (`npx openapps decisions --denied-only`). Set per-collection or policy-global; see
 > [policy-reference.md](policy-reference.md#error-disclosure).
 
 > **Error envelope.** Every rejection returns
@@ -148,7 +148,7 @@ unbounded storage or encode these numbers into application behavior.
 The raw HTTP response body exposes this field at `decline.boundary.cause`.
 The JavaScript SDK attaches it to the thrown or transport-specific error at `error.decline.boundary.cause`.
 Inside an OpenApps Function, `ctx.bounded` wraps the server body at `error.details`, so use `error.details.decline.boundary.cause`.
-`openapps data ... --json` exposes the root error document with the cause at `decline.boundary.cause` in CLI releases that include structured decline propagation.
+`npx openapps data ... --json` exposes the root error document with the cause at `decline.boundary.cause` in CLI releases that include structured decline propagation.
 
 > **Read denials never return `403`.** A read your `read` rule denies comes back
 > with HTTP `200` and an **empty payload** — `{"data": null}` for a single
@@ -181,7 +181,7 @@ Agent rule of thumb:
   the rule is intentionally time-dependent, otherwise fix the caller, payload,
   or prerequisite state.
 
-A non-zero exit code from `openapps data set`/`set-many` plus the structured
+A non-zero exit code from `npx openapps data set`/`set-many` plus the structured
 error is the whole contract — there is nothing to roll back, because nothing
 was applied.
 
@@ -189,13 +189,13 @@ was applied.
 
 A denied write returns `403` with a trace of the predicate that evaluated false
 — but that's only the *current* attempt. To see recent history (which writes were
-allowed vs denied, by whom, and why), use **`openapps decisions`**:
+allowed vs denied, by whom, and why), use **`npx openapps decisions`**:
 
 ```
-$ openapps data set --app-id <id> --path "rooms/r1" --data '{"name":"x"}'
+$ npx openapps data set --app-id <id> --path "rooms/r1" --data '{"name":"x"}'
 ✗ 403 Policy failed: Expression evaluated to false
 
-$ openapps decisions --app-id <id> --denied-only
+$ npx openapps decisions --app-id <id> --denied-only
 TIME       DECISION  ACTION  PATH      ACTOR         REASON
 23:40:08Z  DENY      create  rooms/r1  89MnyG..1ZTe  Policy failed: Expression evaluated to false
            ↳ Policy failed: "89MnyG…" != "owner…" -> false | resolved: @user.id="89MnyG…", get("rooms/r1")={"owner":"owner…"}, @time.now="1785346554"
@@ -211,7 +211,7 @@ app team, not for the denied writer. If a deny hinges on time, the resolved
 suspecting anything else.
 
 The backend keeps a bounded (~200-entry, denies-prioritized) in-memory ring
-buffer of recent WRITE decisions per app. `openapps decisions` reads it
+buffer of recent WRITE decisions per app. `npx openapps decisions` reads it
 (owner/collaborator gated); `--json` emits one object per line for agents. See
 [cli-reference.md](../../openapps-deploy/docs/cli-reference.md#debugging-denied-writes--openapps-decisions).
 
@@ -221,17 +221,17 @@ With `rollingSum(amount) ≤ 100` over 3600s (name `spend_cap`) declared on
 `agents/$agentId/spend/$spendId`:
 
 ```
-$ openapps data set --path "agents/a1/spend/s1" --data '{"amount": 60}'
+$ npx openapps data set --path "agents/a1/spend/s1" --data '{"amount": 60}'
 ✓ committed                                  # window sum: 60 / 100
 
-$ openapps data set --path "agents/a1/spend/s2" --data '{"amount": 60}'
+$ npx openapps data set --path "agents/a1/spend/s2" --data '{"amount": 60}'
 ✗ 409 postcondition failed: invariant "spend_cap" requires rolling sum(agents/$agentId/spend/$spendId.amount) <= 100   # 60+60=120   [full disclosure]
   nothing committed
 
-$ openapps data set --path "agents/a1/spend/s3" --data '{"amount": 40}'
+$ npx openapps data set --path "agents/a1/spend/s3" --data '{"amount": 40}'
 ✓ committed                                  # window sum: 100 / 100
 
-$ openapps data set --path "agents/a1/spend/s4" --data '{"amount": 1}'
+$ npx openapps data set --path "agents/a1/spend/s4" --data '{"amount": 1}'
 ✗ 409 postcondition failed: invariant "spend_cap" requires rolling sum(agents/$agentId/spend/$spendId.amount) <= 100   # 100+1=101   [full disclosure]
 ```
 
@@ -256,11 +256,11 @@ credit that only exist together:
   { "path": "accounts/alice", "document": { "balance": 50 } },
   { "path": "accounts/bob",   "document": { "balance": 150 } }
 ]
-$ openapps data set-many --from-json transfer.json
+$ npx openapps data set-many --from-json transfer.json
 ✓ committed 2 document(s)                    # 100+100 → 50+150, total preserved
 
 # unbalanced: -50 / +40 → whole batch rejected
-$ openapps data set-many --from-json bad-transfer.json
+$ npx openapps data set-many --from-json bad-transfer.json
 ✗ 409 invariant_violation: no_minting
   conserve(balance): write-set sum 190 != 200
   nothing committed — neither document changed
@@ -303,7 +303,7 @@ gated write; the rule admits it by reading the admin-controlled allowlist entry
 ```
 
 ```
-$ openapps data set-many --from-json compose.json
+$ npx openapps data set-many --from-json compose.json
 ✓ committed 1 document(s)
 ```
 
@@ -523,7 +523,7 @@ await setMany([
 ## Related
 
 - [onchain.md](../../openapps-onchain/docs/onchain.md) — on-chain collections, client-signed transactions, `--protocol`, the mirror, `0xbc4`
-- [cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — `openapps data set/set-many/get` flags
+- [cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — `npx openapps data set/set-many/get` flags
 - [sdk-reference.md](../../openapps-frontend/docs/sdk-reference.md) — `set`/`setMany` from TypeScript
 - [policy-generation-guide.md](policy-generation-guide.md) — designing the policy these writes hit
 - [queries.md](queries.md) — reads: filters, sort, paging, aggregations, joins

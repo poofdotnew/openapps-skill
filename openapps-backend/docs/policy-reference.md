@@ -438,7 +438,7 @@ and **`full` everywhere else** (local/dev) — so you debug freely locally and p
 is locked down with zero config.
 
 **The full reason always stays in the decision log**, regardless of disclosure
-level. The owner reads it via `openapps decisions --denied-only`; only the
+level. The owner reads it via `npx openapps decisions --denied-only`; only the
 *client-facing* envelope is trimmed.
 
 **The error envelope** is `{ error, code, status, requestId }`. `code` is a stable

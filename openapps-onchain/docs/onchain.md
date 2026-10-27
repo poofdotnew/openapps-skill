@@ -45,10 +45,10 @@ decisions that must agree:
 
 ```bash
 # off-chain (default) - omit --protocol or pass realtime_offchain
-openapps deploy ./policy.json --create --name my-app
+npx openapps deploy ./policy.json --create --name my-app
 
 # onchain on devnet
-openapps deploy ./policy.json --create --name my-app --protocol realtime_devnet
+npx openapps deploy ./policy.json --create --name my-app --protocol realtime_devnet
 ```
 
 ## Mainnet apps are owned by your wallet, immutably
@@ -74,11 +74,11 @@ signs. See the **openapps** skill. Everything below is about the mainnet apps
 What follows from that:
 
 - **The owner must be a wallet your identity can actually sign with.**
-  `openapps deploy --create --protocol realtime_mainnet` resolves the owner from
+  `npx openapps deploy --create --protocol realtime_mainnet` resolves the owner from
   how you are signed in, and the server refuses any wallet you have not proven
   you control.
   On a CLI keypair, the owner is your local CLI wallet, exactly as before.
-  On a **web login** (`openapps login`; email, social, or wallet sign-in), the
+  On a **web login** (`npx openapps login`; email, social, or wallet sign-in), the
   owner is your OpenApps account's own wallet - the embedded wallet for
   email/social accounts, or the wallet you signed in with - and because that
   choice is permanent, the CLI states the exact address and asks you to confirm
@@ -118,10 +118,10 @@ What follows from that:
 
 ```bash
 # onchain on mainnet - owned by your local CLI wallet (keypair lane)
-openapps deploy ./policy.json --create --name my-app --protocol realtime_mainnet
+npx openapps deploy ./policy.json --create --name my-app --protocol realtime_mainnet
 
 # the same on a web login - confirm the permanent owner wallet explicitly
-openapps deploy ./policy.json --create --name my-app --protocol realtime_mainnet \
+npx openapps deploy ./policy.json --create --name my-app --protocol realtime_mainnet \
   --owner-wallet <your-account-wallet>
 ```
 
@@ -134,7 +134,7 @@ reassign ownership to repair it.
 
 Protocol selection does not make every discovered plugin usable on that network.
 OpenApps tracks function discovery, deployed-runtime support, and retained live verification separately.
-Run `openapps plugins list --json` for the CLI's offline callable projection, then `openapps plugins describe <plugin.function> --json` for the exact arguments, proof sorts, signer roles, return contract, and network-scoped support evidence.
+Run `npx openapps plugins list --json` for the CLI's offline callable projection, then `npx openapps plugins describe <plugin.function> --json` for the exact arguments, proof sorts, signer roles, return contract, and network-scoped support evidence.
 These commands need no account or network connection and their capability state is advisory, not a deploy verdict.
 An invalid `--protocol` is rejected locally before any network request.
 The deployed program is recorded as runtime v10 on devnet (2026-10-13, slot 510718296) and runtime v9 on mainnet-beta (2026-10-06, slot 453954979), but the runtime version does not prove that an external protocol is deployed or configured.
@@ -341,7 +341,7 @@ Two real hazards remain.
 > `0xbc4` applies.
 
 So: flag `onchain: true` on the collections that must live on Solana, leave the rest unflagged, and keep each batch on one side of the line.
-`openapps deploy` prints an advisory (`onchain_protocol_collections_not_registered`) naming any unflagged collection on an onchain protocol.
+`npx openapps deploy` prints an advisory (`onchain_protocol_collections_not_registered`) naming any unflagged collection on an onchain protocol.
 The advisory states exactly the per-batch semantics above: writes to unflagged collections commit offchain, and mixing them with an onchain collection in a single batch fails the whole batch.
 It is not an error, and an intentionally offchain collection is fine.
 (On the off-chain `realtime_offchain` protocol it is the reverse: `onchain: true` collections are simulated/stored off-chain - deploy prints that warning too.)
@@ -377,7 +377,7 @@ A policy that verifies on Poofnet still needs every called function checked agai
   This simulated Poofnet balance does not make the mainnet-only `@TokenPlugin.USDC` constant usable on devnet.
 - **Explicit developer funding.** An app owner, admin, or developer can add
   simulated SOL, USDC, or any mint to any wallet inside that app's Poofnet
-  ledger with `openapps wallet fund <wallet> --app-id <appId> --mint <SOL|USDC|mint> --amount <amount>`.
+  ledger with `npx openapps wallet fund <wallet> --app-id <appId> --mint <SOL|USDC|mint> --amount <amount>`.
   The command works only for `realtime_offchain` and never creates real onchain assets.
   Custom mints use their simulated token metadata decimals.
   If the mint has not been created in simulated state yet, pass its real precision with `--decimals <0-18>`.
@@ -494,7 +494,7 @@ restructuring fixes it.
 OpenApps surfaces the limit at two points so you don't discover it when a user's
 write fails on-chain:
 
-- **`openapps deploy` (compile-time).** The validator estimates
+- **`npx openapps deploy` (compile-time).** The validator estimates
   each `onchain: true` collection's single-document hook transaction **after
   standard-LUT compression**. If it still exceeds the limit, deploy is **rejected**
   with a message naming the collection, the hook, the actions, the sizes and the
@@ -512,7 +512,7 @@ write fails on-chain:
   compressed is **rejected 413** ("would fail on mainnet"); estimate-driven
   overages **warn without blocking**. The 413 carries the full reason in both
   `error` and `message` (so `err.message` in the SDK is actionable) and is
-  recorded as a **decision** - `openapps decisions` answers "why did my write
+  recorded as a **decision** - `npx openapps decisions` answers "why did my write
   fail". A warn-band write succeeds with a `warnings: [...]` array on the
   response. Bundles repeating the same action are estimated with calibrated
   **repeat costs** - repeated accounts dedupe on-chain, so N calls cost less than

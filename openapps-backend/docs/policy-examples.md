@@ -6,7 +6,7 @@ validation with **zero issues**. The literal `"false"` rules are the
 **intentional always-deny idiom** for immutable/server-authoritative collections.
 
 > A literal `"false"` rule is the **intended append-only / server-authoritative
-> deny idiom**, and `openapps deploy` accepts it. The `"false"` rules in the
+> deny idiom**, and `npx openapps deploy` accepts it. The `"false"` rules in the
 > examples below are correct and deployable as written.
 
 Read these after the method — they show the whole shape, not fragments.

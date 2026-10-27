@@ -239,13 +239,13 @@ This complete policy creates a durable receipt document plus a named app PDA:
 Use a wallet-authenticated named query to obtain the current rent, then write that exact value:
 
 ```sh
-openapps --json --env staging data query \
+npx openapps --json --env staging data query \
   --app-id <app-id> \
   --path acceptance/<run-id>/rawAccounts/example \
   --name rentForSpace \
   --args '{"space":64}'
 
-openapps --json --env staging data set \
+npx openapps --json --env staging data set \
   --app-id <app-id> \
   --path acceptance/<run-id>/rawAccounts/example \
   --data '{"actor":"<wallet-address>","space":64,"rentLamports":<exact-query-result>}'
@@ -256,13 +256,13 @@ Confirm the returned public signature before reading `acceptance/<run-id>/rawAcc
 Then run:
 
 ```sh
-openapps --json --env staging data query \
+npx openapps --json --env staging data query \
   --app-id <app-id> \
   --path acceptance/<run-id>/rawAccounts/example \
   --name address \
   --args '{}'
 
-openapps --json --env staging data query \
+npx openapps --json --env staging data query \
   --app-id <app-id> \
   --path acceptance/<run-id>/rawAccounts/example \
   --name exists \
@@ -491,7 +491,7 @@ Before enabling a new primitive or runtime version:
 - A client preflight or transaction simulation rejection is not proof of an onchain invariant denial.
   Configure a trusted Devnet RPC through `SOLANA_DEVNET_RPC_URL` before CLI submission.
   Never echo, log, commit, or retain a secret RPC URL.
-  For headless wallet-keypair acceptance, the public path is `openapps --json --env staging data set --app-id <app-id> --path <path> --data '<json>' --skip-preflight`.
+  For headless wallet-keypair acceptance, the public path is `npx openapps --json --env staging data set --app-id <app-id> --path <path> --data '<json>' --skip-preflight`.
   The CLI uses its selected credential source, signs and submits, and emits only `{"transactionId":"<public-signature>","chain":"solana_devnet"}`.
   It never emits signed bytes.
   Poll `getSignatureStatuses` until the signature is finalized with an error and retain its public finalized slot.

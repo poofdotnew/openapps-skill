@@ -1,11 +1,11 @@
 # Formal verification (experimental, opt-in)
 
-`openapps verify --experimental` runs an SMT solver (Z3) over `policy.json` and reports which generated proof obligations it could discharge.
+`npx openapps verify --experimental` runs an SMT solver (Z3) over `policy.json` and reports which generated proof obligations it could discharge.
 It is not part of any OpenApps workflow.
-`openapps deploy` validates and compiles the policy and never runs the prover; previews, releases, and Open all accept a policy that was never proved.
+`npx openapps deploy` validates and compiles the policy and never runs the prover; previews, releases, and Open all accept a policy that was never proved.
 Every rule and invariant is enforced by the runtime before commit whether or not it was proved, so a proof adds design-time evidence, never runtime behavior.
 Run it only when a person explicitly asks for a proof report.
-Without `--experimental` the command refuses and points back to `openapps tests run` and deploy.
+Without `--experimental` the command refuses and points back to `npx openapps tests run` and deploy.
 
 ## What it checks
 
@@ -43,7 +43,7 @@ A rule can also be too large to decide.
 
 Operational limits: the endpoint is rate-limited to about twenty requests per minute per app owner (`429`).
 A `503` with `proof_substrate_unavailable` (`retryable: true`) means the prover lane is warming up or busy: wait 30 seconds and rerun the same command, at most three attempts in total, then report the proving service as degraded with the `correlationId`.
-Never apply that retry to `openapps deploy`, and never retry `openapps deploy --create`, which can create another app.
+Never apply that retry to `npx openapps deploy`, and never retry `npx openapps deploy --create`, which can create another app.
 
 ## Proof-only declarations (`proofs`)
 
@@ -125,7 +125,7 @@ The default `verifyForDeploy` proves the whole policy (the name is historical; d
 | `checkImplication` | `--rule` + `--property` | the rule implies the property |
 
 ```bash
-openapps verify --experimental ./policy.json --app-id <id> \
+npx openapps verify --experimental ./policy.json --app-id <id> \
   --operation checkImplication \
   --rule '@user.id != null && @newData.amount <= 100' \
   --property '@newData.amount <= 100'

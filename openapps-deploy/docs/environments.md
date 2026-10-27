@@ -48,7 +48,7 @@ above `ADMIN` is a throwaway `LocalDevWallet`, distinct from both preview and
 production, precisely so a bare deploy cannot silently ship one environment's
 identity to another.
 
-You do not have to rely on the base block for a named deploy: `openapps deploy`
+You do not have to rely on the base block for a named deploy: `npx openapps deploy`
 **derives the environment from the target app id** when you omit `--environment`.
 If `--app-id` (or the linked `bounded.json` app) matches exactly one
 environment's `appId`, the CLI resolves that environment's constants and prints
@@ -59,8 +59,8 @@ for a production environment's identity.
 ## Usage
 
 ```bash
-openapps deploy ./policy.json --environment preview      # → preview appId, preview constants
-openapps deploy ./policy.json --environment production   # → production appId, production constants
+npx openapps deploy ./policy.json --environment preview      # → preview appId, preview constants
+npx openapps deploy ./policy.json --environment production   # → production appId, production constants
 ```
 
 What the CLI does for `--environment <name>`:
@@ -75,7 +75,7 @@ What the CLI does for `--environment <name>`:
    `@const`/`@def` resolution ([constants-and-defs.md](../../openapps-backend/docs/constants-and-defs.md))
    inlines the now env-specific values.
 
-`openapps deploy`, `openapps tests run`, and `openapps functions deploy --all` run
+`npx openapps deploy`, `npx openapps tests run`, and `npx openapps functions deploy --all` run
 the same resolution, so what you test is what you ship.
 
 So one file gives preview and production **different admin members and different
@@ -95,8 +95,8 @@ Create two apps before adding the `environments` block. Record each printed
 `appId`. The second command creates the production app:
 
 ```bash
-openapps deploy ./policy.json --create --name my-app-staging
-openapps deploy ./policy.json --create --name my-app-production
+npx openapps deploy ./policy.json --create --name my-app-staging
+npx openapps deploy ./policy.json --create --name my-app-production
 ```
 
 Wire both ids into `policy.json`:
@@ -120,23 +120,23 @@ Wire both ids into `policy.json`:
 Resolve and deploy the policy once per environment:
 
 ```bash
-openapps deploy ./policy.json --environment staging
-openapps deploy ./policy.json --environment production
+npx openapps deploy ./policy.json --environment staging
+npx openapps deploy ./policy.json --environment production
 ```
 
 Build the static frontend, then deploy the same build to each app explicitly:
 
 ```bash
 npm run build
-openapps site deploy ./dist --app-id <staging-app-id>
-openapps site deploy ./dist --app-id <production-app-id>
+npx openapps site deploy ./dist --app-id <staging-app-id>
+npx openapps site deploy ./dist --app-id <production-app-id>
 ```
 
 Deploy the policy-declared function set once per environment so the same environment-specific constants resolve inside `actAs`:
 
 ```bash
-openapps functions deploy --all --policy ./policy.json --environment staging
-openapps functions deploy --all --policy ./policy.json --environment production
+npx openapps functions deploy --all --policy ./policy.json --environment staging
+npx openapps functions deploy --all --policy ./policy.json --environment production
 ```
 
 `policy.json` `--environment` and `bounded.json` `environment` are different
@@ -230,7 +230,7 @@ so each way of losing it refuses instead:
   environment to filter against, so rather than guess it makes you pick.
 
 That last rule is the one to remember when a previously-fine bare
-`openapps deploy ./policy.json` starts refusing: adding the first
+`npx openapps deploy ./policy.json` starts refusing: adding the first
 `environments` allowlist anywhere in the policy makes `--environment`
 mandatory for the whole file.
 

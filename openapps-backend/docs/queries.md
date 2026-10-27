@@ -113,7 +113,7 @@ do {
 ### CLI form
 
 ```bash
-openapps data get --app-id <id> --path orders \
+npx openapps data get --app-id <id> --path orders \
   --filter '{"status":{"$in":["open","pending"]},"total":{"$gte":100}}' \
   --sort createdAt:desc --limit 20
 ```
@@ -157,7 +157,7 @@ const byStatus = await queryAggregate("orders", {
   leak).
 
 ```bash
-openapps data aggregate --app-id <id> --path orders --group status --sum total --count
+npx openapps data aggregate --app-id <id> --path orders --group status --sum total --count
 ```
 
 > The filter / sort / aggregate API is a **runtime** feature of the data plane.
@@ -309,7 +309,7 @@ exceeded". The runtime enforces the resulting authorization decision.
 ## Related
 
 - [sdk-reference.md](../../openapps-frontend/docs/sdk-reference.md) — `get`/`count`/`aggregate`/`search` signatures
-- [cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — `openapps data get/aggregate/search` flags
+- [cli-reference.md](../../openapps-deploy/docs/cli-reference.md) — `npx openapps data get/aggregate/search` flags
 - [policy-reference.md](policy-reference.md) — `queries`, `relationships`, `links`, `get()`
 - [data-plane.md](data-plane.md) — reads, writes, and in-batch composition
 - [files-and-search.md](files-and-search.md) — full-text search queries

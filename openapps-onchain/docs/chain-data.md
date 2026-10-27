@@ -1,7 +1,7 @@
 # Chain data — managed read-only Helius + Alchemy proxy
 
 OpenApps proxies two chain-data providers through the standard managed services
-surface: `ctx.services` in functions, `openapps services search|describe` in the
+surface: `ctx.services` in functions, `npx openapps services search|describe` in the
 CLI. No provider keys in app code, every call metered and observed, and the
 whole surface is read-only by construction.
 

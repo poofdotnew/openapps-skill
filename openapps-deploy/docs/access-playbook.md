@@ -1,7 +1,7 @@
 # Access playbook — don't give up on an access error
 
 **What's in here / when to read this:** you tried to `deploy`, `site deploy`,
-or run `openapps access` and hit **`requires a keypair`**, a **`401`/`403`**, or
+or run `npx openapps access` and hit **`requires a keypair`**, a **`401`/`403`**, or
 "you don't have access" — and you're about to tell the human they're **blocked on
 the owner**. **Stop and read this first.** Those errors are almost never "you lack
 access." They are almost always **the wrong identity is selected** or a **stale
@@ -13,12 +13,12 @@ Two refusals are **never** identity problems, so nothing below applies to them: 
 `boundary_violation` (an app boundary that refuses every author; see the
 boundary-lock section) and a **`402 deploy_credit_insufficient`** (billing: the
 deploying account has no spendable credit for the deploy; run
-`openapps billing status`, add credit with `openapps billing topup --credits <n>`,
+`npx openapps billing status`, add credit with `npx openapps billing topup --credits <n>`,
 retry under the same identity).
 
 > **The incident this doc exists to prevent.** A user was an **admin**
 > (`ui:deploy` = ✓) on an app and could deploy the whole time. Their CLI was
-> signed in as a **web-login** account, so `openapps site deploy` errored
+> signed in as a **web-login** account, so `npx openapps site deploy` errored
 > `requires a keypair`. The agent read that as a permissions wall and said
 > "blocked on the owner's account" for *many turns*. Both conclusions were wrong:
 > the user had `ui:deploy`, and the error was a CLI-version quirk, not a wall.
@@ -26,25 +26,25 @@ retry under the same identity).
 ## First move: run the canonical check (never hand-roll a token curl)
 
 ```bash
-openapps whoami                          # WHO am I signed in as right now?
-openapps access --app-id <id>            # WHAT can this identity do on this app?
-openapps access --app-id <id> --json     # per-capability arrays — the source of truth
+npx openapps whoami                          # WHO am I signed in as right now?
+npx openapps access --app-id <id>            # WHAT can this identity do on this app?
+npx openapps access --app-id <id> --json     # per-capability arrays — the source of truth
 ```
 
-`openapps access` prints **your effective role** on the app. If you have the
+`npx openapps access` prints **your effective role** on the app. If you have the
 capability, you can do the thing — no owner needed:
 
 | You have | You can |
 |---|---|
-| `ui:deploy` | `openapps site deploy` (publish the frontend) |
-| `policy:deploy` | `openapps deploy` (push `policy.json`) |
+| `ui:deploy` | `npx openapps site deploy` (publish the frontend) |
+| `policy:deploy` | `npx openapps deploy` (push `policy.json`) |
 | `functions:deploy` | deploy backend functions |
 | `code:read` | read/clone the source |
 
 `admin`, `developer`, and `owner` all carry `ui:deploy` + `policy:deploy` +
 `functions:deploy`. **Do NOT** probe access by curling a token against the API —
 stale/expired tokens return misleading `401`s and send you chasing a permissions
-problem that doesn't exist. `openapps access` is the answer; trust it over a raw
+problem that doesn't exist. `npx openapps access` is the answer; trust it over a raw
 HTTP status.
 
 ## The five things an access error is (almost always) really telling you
@@ -61,14 +61,14 @@ hold the grant:
 If the owner shared the app **with an email**, the **email identity** is the
 member - **not necessarily the CLI keypair** you happen to be signed in as. A
 freshly selected global keypair may own nothing and will 401 on everything.
-`openapps whoami` tells you which identity is active. Switch and **re-check under
+`npx openapps whoami` tells you which identity is active. Switch and **re-check under
 each relevant identity before concluding anything**:
 
 ```bash
-openapps account use --web && openapps login --email you@example.com   # web/email session
-openapps access --app-id <id>                                          # check as the web identity
-openapps account use --global                                          # your CLI keypair
-openapps access --app-id <id>                                          # check as the keypair
+npx openapps account use --web && npx openapps login --email you@example.com   # web/email session
+npx openapps access --app-id <id>                                          # check as the web identity
+npx openapps account use --global                                          # your CLI keypair
+npx openapps access --app-id <id>                                          # check as the keypair
 ```
 
 The grant is real if *any* of your identities shows it. Don't stop at the first
@@ -77,22 +77,22 @@ one that 403s.
 On current CLI builds the identity default is **email-first**: projectless
 control-plane commands use the saved browser session and never silently fall
 back to an unlinked global key. If a management command acts as a fresh keypair
-while a web login exists, run `openapps update`, then re-run `openapps whoami`.
+while a web login exists, run `npx openapps update`, then re-run `npx openapps whoami`.
 
 ### 1b. Owner-only operations (`share`, roster, transfer): find WHICH login is the owner
 
-`openapps share` and roster changes are **owner-only** (or `access:manage`), so
+`npx openapps share` and roster changes are **owner-only** (or `access:manage`), so
 the wrong-identity problem bites hardest here. Don't spend turns hunting for
 keypair files. The identity model is: wallets and emails that belong to the same
 person are **linked into one account**, and a grant held by the wallet is
 carried by a login to the linked email. So:
 
 ```bash
-openapps access --app-id <id> --json      # shows the owner identity (often a wallet)
-openapps whoami --json                     # who you are now; `linkedAccount` names the linked account
+npx openapps access --app-id <id> --json      # shows the owner identity (often a wallet)
+npx openapps whoami --json                     # who you are now; `linkedAccount` names the linked account
 cat ~/.bounded/account.json               # what the owner wallet is linked to
-openapps login --email <that-email>        # an OTP login to the LINKED email carries owner rights
-openapps share <email> --role viewer --app-id <id>
+npx openapps login --email <that-email>        # an OTP login to the LINKED email carries owner rights
+npx openapps share <email> --role viewer --app-id <id>
 ```
 
 If the owner is a wallet linked to `person@example.com`, logging in as that
@@ -100,11 +100,11 @@ email IS acting as the owner — you do not need the wallet's keypair on disk.
 A link approved with a **wallet** instead of an email has no email to log in as:
 `linkedAccount` is that wallet, and acting as the owner means holding either
 that wallet or the linked keypair. A wallet linked to nothing requires the
-actual keypair (`openapps account use --global` / the profile holding it).
+actual keypair (`npx openapps account use --global` / the profile holding it).
 
-Also: if `openapps share` returns a **5xx**, the grant may still have landed
+Also: if `npx openapps share` returns a **5xx**, the grant may still have landed
 (some failures happen after the roster write — a retry then says "Address is
-already a collaborator"). **Verify with `openapps access --app-id <id>` before
+already a collaborator"). **Verify with `npx openapps access --app-id <id>` before
 retrying or concluding failure.**
 
 ### 2. `requires a keypair` on a management command = a CLI-version bug
@@ -121,7 +121,7 @@ same identity that email has on the app's own site. Two exceptions, and both say
 so plainly rather than looking like a permissions wall:
 
 - **OpenApps Local** apps are keypair-only (a local app cannot be minted for by
-  the shared staging issuer) - use `openapps account use --global`.
+  the shared staging issuer) - use `npx openapps account use --global`.
 - **Writes that need a client-signed Solana transaction** (an `onchain: true`
   collection) need a wallet key, since a web session cannot sign.
 
@@ -131,15 +131,15 @@ the app, because it opens a sign-in-with-Solana session.
 Fix outdated management-command behavior in this order:
 
 ```bash
-openapps version                                          # confirm what build you're on
-openapps update                                           # update to the current CLI
+npx openapps version                                          # confirm what build you're on
+npx openapps update                                           # update to the current CLI
 # Installed from npm? update the dev dependency instead:
 npm install -D openapps@latest
 # (developing the CLI locally? rebuild the bundle, then `openapps version` to confirm)
 ```
 
 If updating isn't possible right now and the same person *also* has a wallet
-key/keypair that holds the grant, `openapps account use --global` (or the profile
+key/keypair that holds the grant, `npx openapps account use --global` (or the profile
 that owns it) and deploy from there. Either way: **don't declare it blocked.**
 
 ### 3. Collaborators are cross-account — a different owner does NOT mean no access
@@ -150,7 +150,7 @@ does not mean you lack access.** Never infer "not mine → can't touch it" from
 `.bounded/app.json`'s `owner` field. Verify the real answer:
 
 ```bash
-openapps access --app-id <id>     # your effective role on an app you don't own
+npx openapps access --app-id <id>     # your effective role on an app you don't own
 ```
 
 If it shows a role with the capability you need, act. Ownership is about
@@ -162,8 +162,8 @@ For a human login, a `401` under a web source often means the session lapsed.
 Re-establish it, then re-run the check:
 
 ```bash
-openapps login --email you@example.com    # refresh ~/.bounded/web-session.json
-openapps access --app-id <id>
+npx openapps login --email you@example.com    # refresh ~/.bounded/web-session.json
+npx openapps access --app-id <id>
 ```
 
 For a platform-managed agent session, follow the CLI's agent-credential guidance instead.
@@ -184,8 +184,8 @@ What to do instead:
    `GET /app/<id>/boundaries/ui` (owner/admin bearer). Look at `amend`:
    - **`amend: "creator"`** — the owner can amend the boundaries block itself. Update
      the site with the three-step dance: ① deploy a policy with the boundary loosened
-     (e.g. posture `"open"`, `ui: []`) via `openapps deploy` → ② `openapps site deploy
-     <dist>` → ③ re-apply the locked boundaries block with another `openapps deploy`.
+     (e.g. posture `"open"`, `ui: []`) via `npx openapps deploy` → ② `npx openapps site deploy
+     <dist>` → ③ re-apply the locked boundaries block with another `npx openapps deploy`.
    - **`amend: "none"`** - a one-way renouncement you may ENCOUNTER (on apps whose
      rules were deliberately renounced). Gate G2 refuses any
      change to the `boundaries`/`openApps` sections from anyone, owner included, and
@@ -213,8 +213,8 @@ actually missing. Then an **owner** (or an admin holding `access:manage`) grants
 it in one command:
 
 ```bash
-openapps share <email-or-wallet> --role developer --app-id <id>   # any paid plan
-openapps share <email-or-wallet> --role admin     --app-id <id>   # Team+ owner only
+npx openapps share <email-or-wallet> --role developer --app-id <id>   # any paid plan
+npx openapps share <email-or-wallet> --role admin     --app-id <id>   # Team+ owner only
 ```
 
 - Prefer **`--role developer`** for "help me build/deploy this" — it's exactly
@@ -224,11 +224,11 @@ openapps share <email-or-wallet> --role admin     --app-id <id>   # Team+ owner 
   [access-control.md](../../openapps-backend/docs/access-control.md).
 - Share **by email** works even if the recipient has never signed up — the grant
   binds the instant they verify that email. So the ask to the owner is concrete:
-  *"run `openapps share <my-email> --role developer --app-id <id>`."*
+  *"run `npx openapps share <my-email> --role developer --app-id <id>`."*
 
 ## Letting people INTO a private app without naming them: invite codes
 
-`openapps share` is for people you can name, and it grants a real role. For a slow
+`npx openapps share` is for people you can name, and it grants a real role. For a slow
 rollout of a **private** app to people you cannot enumerate, mint invite codes
 instead. Redeeming one makes the visitor a **member**: they get past the private-site
 wall and appear to the app's own policy rules, and nothing else. A member holds no
@@ -268,13 +268,13 @@ gating collections on `get(/__invitees__/@user.id)`.
 ## The whole playbook in one flow
 
 1. **Don't give up.** `requires a keypair` / `401` / `403` ≠ "you lack access."
-2. `openapps whoami` — know who you are. `openapps access --app-id <id>` — know what
+2. `npx openapps whoami` — know who you are. `npx openapps access --app-id <id>` — know what
    you can do. Never curl a token to test access.
 3. Have `ui:deploy` / `policy:deploy`? **Deploy.** No owner required.
 4. Errored but should have it? **Switch identity** (`account use --web` /
    `--global`) and re-check under each; **update the CLI** if a web session hit
    `requires a keypair`.
-5. Empty under every identity? Ask an owner for one `openapps share ... --role
+5. Empty under every identity? Ask an owner for one `npx openapps share ... --role
    developer --app-id <id>`.
 
 ## Related

@@ -10,7 +10,7 @@ promising a user something OpenApps can't deliver.
 |---|---|
 | **Complete agent-built apps** | One project can carry a client-rendered web UI or React Native client plus policy, runtime, and deployment. A complete build should exercise the user flow and an intentional boundary rejection, not stop at backend generation. |
 | **Managed app services** | Hosted auth, governed data, files/search, Functions, payments, AI services, ordinary realtime subscriptions, and live rooms share one app identity instead of requiring a separate service for each concern. |
-| **Web delivery** | Build any client UI that emits static assets, preview it, then publish it to a `bounded.page` slug or custom domain with `openapps site deploy`. React Native uses the same client/runtime while native packaging remains external. |
+| **Web delivery** | Build any client UI that emits static assets, preview it, then publish it to a `bounded.page` slug or custom domain with `npx openapps site deploy`. React Native uses the same client/runtime while native packaging remains external. |
 | **Governed realtime backend** | One `policy.json` → collections, auth rules, and declared invariants enforced at runtime before commit. Constraint-breaking writes are `409`s, never partial. |
 | **Money / value safety** | `conserve` keeps a total from being minted or destroyed; `rollingSum` enforces spend/rate caps per window and per actor. These are enforced invariants, not prompt instructions. |
 | **Multi-tenant isolation** | `tenantTag` / `tenantEdge` keep documents and references inside their tenant on every write - "nothing leaks across orgs". |
@@ -62,11 +62,11 @@ invariant, that is the case to design around (shard the tenant, split the room).
 
 ## Mainnet policy updates need the owner's signature
 
-Offchain (realtime) and **devnet** apps deploy policy updates with `openapps deploy` directly.
+Offchain (realtime) and **devnet** apps deploy policy updates with `npx openapps deploy` directly.
 A devnet app is owned on-chain by the OpenApps platform admin, so the platform signs its policy updates for you - a keyless web-login deploy needs no permit and no local key.
 
 A **mainnet** app is owned on-chain by the wallet that created it, so every policy update carries an owner-signed authority permit.
-That signature is wired, not deferred: from a CLI keypair it happens inside the one `openapps deploy` command (the CLI has the server mint a permit bound to that exact policy, verifies it locally, and signs it), and from a web-login account it is one browser approval per deploy.
+That signature is wired, not deferred: from a CLI keypair it happens inside the one `npx openapps deploy` command (the CLI has the server mint a permit bound to that exact policy, verifies it locally, and signs it), and from a web-login account it is one browser approval per deploy.
 Budget the owner's signature for mainnet policy changes; nothing else about the flow is manual.
 Full mechanics: [onchain.md](../../openapps-onchain/docs/onchain.md#mainnet-apps-are-owned-by-your-wallet-immutably).
 
@@ -101,7 +101,7 @@ The boundary is precise - don't overclaim it:
   functions write as the verified caller; `actAs`
   service-identity functions are privileged and must be admin-gated: on the
   control-plane roster (`get(/__admins__/@user.id) != null`, the owner plus
-  `openapps share --role admin` collaborators) or on an app-data `admins`
+  `npx openapps share --role admin` collaborators) or on an app-data `admins`
   collection. They are *ordinary logic, contained by enforced rules and
   invariant walls.*
 

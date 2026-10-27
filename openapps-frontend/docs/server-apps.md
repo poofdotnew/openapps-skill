@@ -11,12 +11,12 @@ An OpenApps app that runs a server can go through an APO, and its Open app keeps
 2. A pnpm repo builds only with `node-linker=hoisted` in `.npmrc` and `node_modules` reinstalled after setting it; the build stalls on pnpm's linked `node_modules`.
 3. `npx vinext init --platform=cloudflare --legacy-wrangler-cloudflare-init --skip-check --cdn-cache=none --data-cache=none --image-optimization=none`, then `vinext({ prerender: true })` in `vite.config.ts`.
 4. `vite build` writes the server to `dist/server` (with a `wrangler.json` naming its entry, compatibility date and flags) and the browser files to `dist/client`.
-5. A pack step puts the server into the deployed folder (the layout is below), and `openapps site deploy ./dist/client --with-source` publishes both.
+5. A pack step puts the server into the deployed folder (the layout is below), and `npx openapps site deploy ./dist/client --with-source` publishes both.
 
 Pages vinext prerenders with no `revalidate` (`○` in its build report) are written to `dist/server/prerendered-routes/` and listed in `dist/server/vinext-prerender.json`.
 Copying each one into `dist/client` (`/` as `index.html`, `/about` as `about.html`) makes it a static file: OpenApps serves it without running the server, and client navigations to it still reach the server.
 
-`openapps site deploy` accepts a folder with `_bounded_server/server.json` in place of `index.html`.
+`npx openapps site deploy` accepts a folder with `_bounded_server/server.json` in place of `index.html`.
 Nothing under `_bounded_server/` is served to a browser.
 A `"build"` object in `bounded.json` (`{ "command": "npm run build", "output": "dist/client" }`) declares how the deployed folder is produced, and an OpenApps app's agent builds its releases with it.
 
@@ -55,8 +55,8 @@ Server code reads the names `server.json` lists as `process.env.NAME`; a name it
 `bounded.json` declares the same list as `"server": { "secrets": ["STRIPE_SECRET_KEY"] }`; an OpenApps agent's release refuses a built server that reads a name the commit's `bounded.json` does not list.
 Names are upper case: `^[A-Z][A-Z0-9_]{0,63}$`.
 Names starting `NEXT_PUBLIC_`, `NUXT_PUBLIC_`, `VITE_`, `PUBLIC_`, `EXPO_PUBLIC_` or `REACT_APP_` are refused, because frameworks put those in browser bundles.
-Public values are not secrets: put them in `bounded.json` `build.env` (`openapps site env set NAME VALUE`), because source sync leaves out every `.env` file; `openapps site build` and an OpenApps agent's release build add them to the build.
-The owner sets each value with `openapps secret put NAME` ([secrets](../../openapps-backend/docs/secrets.md)); a new value reaches the server within 30 seconds, with no deploy.
+Public values are not secrets: put them in `bounded.json` `build.env` (`npx openapps site env set NAME VALUE`), because source sync leaves out every `.env` file; `npx openapps site build` and an OpenApps agent's release build add them to the build.
+The owner sets each value with `npx openapps secret put NAME` ([secrets](../../openapps-backend/docs/secrets.md)); a new value reaches the server within 30 seconds, with no deploy.
 In an APO every listed name must be a key the app's OpenApps agent donated: the server reads a stand-in, and the real key is added only to requests to the hosts it was donated for.
 Deploying a server that lists secrets needs the same permission as deploying functions.
 A listed secret that is not set makes every server request answer 503 with `This app's server needs secrets that are not set: NAME.`

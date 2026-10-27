@@ -16,9 +16,9 @@ description: >-
 The server side of an OpenApps app: the policy that governs documented supported
 mutation surfaces, the runtime-enforced invariants, the functions that run
 trusted code, and the actor model that decides who is acting.
-`openapps deploy` validates, compiles, and pushes; runtime rule and invariant
+`npx openapps deploy` validates, compiles, and pushes; runtime rule and invariant
 checks reject violations before commit on their documented supported mutation
-surfaces. Check a policy with concrete policy tests (`openapps tests run`) and by
+surfaces. Check a policy with concrete policy tests (`npx openapps tests run`) and by
 deploying it. Do not generalize that coverage to an unsupported plane,
 undocumented storage path, or inherited corpus. For CLI/deploy see the
 **openapps-deploy** skill; for the client SDK and auth UI see
@@ -52,7 +52,7 @@ term.
 | Functions; declare, `auth`, `entry`, `secrets`, `actAs`, `ctx.user`, `ctx.bounded`, `ctx.env`, `ctx.secrets`, invoke, deploy | [functions](docs/functions.md) |
 | Public functions: HTTP routes without an OpenApps session at `<slug>-api.bounded.page`, `public`, `methods`, `cors`, public JWKS, machine callers, webhook and browser-public modes | [public functions](docs/public-functions.md) |
 | `ctx.ai.run`, `ctx.ai.generateImage`, `ctx.ai.generateVideo`, `getJob`, AI without API keys | [ctx.ai](docs/functions-ctx-ai.md) |
-| `ctx.services`, managed third-party APIs, `openapps services` | [ctx.services](docs/functions-ctx-services.md) |
+| `ctx.services`, managed third-party APIs, `npx openapps services` | [ctx.services](docs/functions-ctx-services.md) |
 | `ctx.browser`, headless browser from a function, driving your own app signed in, `@const.AGENT`, agent identity | [ctx.browser](docs/functions-ctx-browser.md) |
 | `ctx.enqueue`, background jobs, queues, replay identity | [ctx.enqueue](docs/functions-ctx-enqueue.md) |
 | `ctx.build`, functions that originate governed app builds, image and video builds, `mediaSlots` | [ctx.build](docs/functions-ctx-build.md) |
@@ -73,7 +73,7 @@ term.
 | Top-level `roles`, `members`, `read:"*"`, read/write scopes | [roles](docs/roles.md) |
 | `access`, custom/external roles, `__owners__`, `__admins__`, `__developers__`, `__viewers__` | [access control](docs/access-control.md) · [identity and logs](docs/identity-and-logs.md) |
 | Service keys, payout bots, backend identities, `runAs`, `actAs`, `@origin`, `ctx.origin` | [service keys](docs/service-keys.md) · [principals and origins](docs/principals-and-origins.md) |
-| Concrete allow/deny tests; `policy-tests/*.json`, `openapps tests run/push/list/pull` | [policy tests](docs/policy-tests.md) |
+| Concrete allow/deny tests; `policy-tests/*.json`, `npx openapps tests run/push/list/pull` | [policy tests](docs/policy-tests.md) |
 | End-to-end tests for authenticated apps | [testing authed apps](docs/testing-authed-apps.md) |
 | Completion review | [quality checklist](docs/quality-checklist.md) |
 | Agent-facing or backend-only app | [building for agents](docs/building-for-agents.md) · [building a backend](docs/building-a-backend.md) |
@@ -83,7 +83,7 @@ term.
 | Error/status | Meaning |
 |---|---|
 | `403` | A write or function invoke failed a rule. Check auth, ownership, roles, or function `auth`. Denied reads are hidden as `200` with empty data, not `403`. |
-| `500 rule_evaluation_failed` | The rule was reached and could NOT be evaluated - no rule denied you, and nothing was read or written. Not a denial, not a retryable conflict. Read `openapps decisions` for the cause; the row is recorded with `decision: error`. |
+| `500 rule_evaluation_failed` | The rule was reached and could NOT be evaluated - no rule denied you, and nothing was read or written. Not a denial, not a retryable conflict. Read `npx openapps decisions` for the cause; the row is recorded with `decision: error`. |
 | `409` + invariant name | The transaction would violate an invariant. Fix state or policy. |
 | `403 incomplete_batch` | A collection's `requiresInBatch` declaration names companion paths missing from the atomic batch. Submit the complete `setMany`. |
 | Deploy validation error | Deploy refused the policy before anything changed. Fix policy syntax, field types, tier/invariant pairing, constants, or expression use as the message names. |

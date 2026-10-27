@@ -18,7 +18,7 @@ Two planes, one identity, one source of truth:
 - **Identity = the account.** Tracked by the canonical account **id** (`@user.id`).
   **Email and wallet are facets** you author/share with — they resolve to the id. So you
   can invite, log in, and share **by email** and it just works (see "Share by email").
-- **Control plane** (this doc): the `access` block in `policy.json` + `openapps share`.
+- **Control plane** (this doc): the `access` block in `policy.json` + `npx openapps share`.
 - **Data plane**: `policy.json` rules + invariants. **No owner god-mode** — the owner is
   governed too. The control roster is exposed to policy as *opt-in* primitives (the bridge).
 
@@ -30,7 +30,7 @@ replace a data-plane `admins` collection.** They answer different questions — 
 
 | If the "admin" is… | …it's the | Use |
 |---|---|---|
-| someone who **operates the app** (deploys, billing, settings) — your **team** | **control plane** | `openapps share --role` or the `access` block (this doc) |
+| someone who **operates the app** (deploys, billing, settings) — your **team** | **control plane** | `npx openapps share --role` or the `access` block (this doc) |
 | one of your **app's end-users** with elevated **in-app** powers (forum moderator, game admin) — **changes at runtime** | **data plane** | a normal `admins/$userId` collection + rules gating on `get(/admins/@user.id)` — see [admin-and-ownership.md](admin-and-ownership.md) |
 
 Rule of thumb: *"helps run the app" → control plane (access block). "is a special kind of
@@ -79,9 +79,9 @@ need no `access` block at all.**
 Grant with the CLI:
 
 ```bash
-openapps share <wallet>          --role developer --app-id <id>   # any paid plan
-openapps share newperson@x.com   --role developer --app-id <id>   # works before they sign up
-openapps share alice@example.com --role admin --app-id <id>       # Team+ owners only
+npx openapps share <wallet>          --role developer --app-id <id>   # any paid plan
+npx openapps share newperson@x.com   --role developer --app-id <id>   # works before they sign up
+npx openapps share alice@example.com --role admin --app-id <id>       # Team+ owners only
 ```
 
 ### What each preset actually contains (the capability matrix)
@@ -94,7 +94,7 @@ is a strict superset of `developer`** (and of `viewer`/`billing`). It already in
 | Capability | owner | admin | developer | viewer | billing |
 |---|:--:|:--:|:--:|:--:|:--:|
 | `app:view` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `analytics:view` (raw analytics, `openapps decisions`, per-user lists) | ✓ | ✓ | ✓ | ✓ | — |
+| `analytics:view` (raw analytics, `npx openapps decisions`, per-user lists) | ✓ | ✓ | ✓ | ✓ | — |
 | `code:read` (read source) | ✓ | ✓ | ✓ | — | — |
 | `policy:deploy` | ✓ | ✓ | ✓ | — | — |
 | `functions:deploy` | ✓ | ✓ | ✓ | — | — |
@@ -124,7 +124,7 @@ covers everything the person needs; if no single preset fits, define a custom ro
 Verify the effective result any time with:
 
 ```bash
-openapps access --app-id <id> --json   # per-member capability arrays — the source of truth
+npx openapps access --app-id <id> --json   # per-member capability arrays — the source of truth
 ```
 
 ## Custom roles + capabilities (the flexible layer)
@@ -176,7 +176,7 @@ functions, and UI — share its key (or grant) as **`developer`**. That preset i
 needs and nothing it doesn't (no delete/transfer/billing/roster):
 
 ```bash
-openapps share <agent-wallet-or-email> --role developer --app-id <id>
+npx openapps share <agent-wallet-or-email> --role developer --app-id <id>
 ```
 
 `code:read` is the capability to **retrieve the project's source** (clone/read the managed
@@ -273,7 +273,7 @@ via the bridge — can be given cross-tenant data powers your policy declares. M
 easily:
 
 ```bash
-openapps share ops@yourco.com --role admin --app-id <platformAppId>
+npx openapps share ops@yourco.com --role admin --app-id <platformAppId>
 ```
 
 **2. In-app super-admins (data plane), closed by construction.** When *your platform's own users*
@@ -352,7 +352,7 @@ so one tenant can never touch another's data.
 
 ## Related
 
-- Hit `requires a keypair`/`401`/`403` or about to conclude "no access / blocked on the owner"? → the [access playbook](../../openapps-deploy/docs/access-playbook.md) (check identity + `openapps access` before surrendering)
+- Hit `requires a keypair`/`401`/`403` or about to conclude "no access / blocked on the owner"? → the [access playbook](../../openapps-deploy/docs/access-playbook.md) (check identity + `npx openapps access` before surrendering)
 - Data-plane admin/owner patterns and a closed admin set → [admin-and-ownership.md](admin-and-ownership.md)
 - Top-level `roles` block (cross-collection read/write grants) → [roles.md](roles.md)
 - Sharing, linking, teams, login → [auth.md](../../openapps-frontend/docs/auth.md)

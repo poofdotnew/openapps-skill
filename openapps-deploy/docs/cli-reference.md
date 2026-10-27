@@ -1,7 +1,7 @@
 # CLI Reference — every `openapps` command
 
 **What's in here / when to read this:** every `openapps` command + flag, grouped
-by purpose. Every flag below exists in the CLI; `openapps <cmd> --help` prints the
+by purpose. Every flag below exists in the CLI; `npx openapps <cmd> --help` prints the
 same with an Example block.
 
 **Global flags** (any command): `--json` (structured output for agents -
@@ -10,7 +10,7 @@ errors are emitted as JSON too), `--quiet` (minimal output), `--env`
 deployment instance; also `BOUNDED_INSTANCE`).
 
 Billing status distinguishes zero credit from “Billing temporarily unavailable.”
-For account credit, read `.credits.pool.available` from a successful `openapps billing status --json` response.
+For account credit, read `.credits.pool.available` from a successful `npx openapps billing status --json` response.
 A billing error is not a zero balance; retry the read and avoid paying again for an already-paid checkout.
 See [billing.md](../../openapps/docs/billing.md#checking-status) for settlement guidance.
 
@@ -27,16 +27,16 @@ Piped secret input has a 30-second limit and is rejected above 1 MiB.
 Git source subprocesses have a 2-minute limit, skill-install subprocesses 2 minutes, and proof runtimes 10 minutes.
 Cancellation also bounds inherited output pipes and terminates subprocess groups on Unix or attempts tree termination on Windows.
 
-`openapps subscribe` allows at most five reconnections with exponential backoff and stops on explicit server refusals or session failures.
+`npx openapps subscribe` allows at most five reconnections with exponential backoff and stops on explicit server refusals or session failures.
 The first snapshot must arrive within 30 seconds, or within the supplied `--timeout`; keepalive frames do not extend that initial deadline.
 Build watches stop after five consecutive failed status or event reads, and their timeout also applies while reads fail.
 These limits do not replay failed mutations automatically.
 
 ## Identity & teams
 
-The normal CLI identity is your **web account's user id**. `openapps init` reuses
+The normal CLI identity is your **web account's user id**. `npx openapps init` reuses
 or refreshes the saved session and opens browser login when needed. A separate
-`openapps login` is useful for explicit reauthentication, account switching, or
+`npx openapps login` is useful for explicit reauthentication, account switching, or
 headless OTP, but is not required before init.
 
 The CLI also supports advanced local-signing sources:
@@ -49,7 +49,7 @@ The CLI also supports advanced local-signing sources:
   sign-in page for email or social login. The CLI uses Authorization Code + PKCE,
   stores the refreshable session in `~/.bounded/web-session.json`, and selects
   `web` for the current project when one exists. It does not create or link a
-  local key. Use `openapps login --email you@example.com` for a terminal OTP flow
+  local key. Use `npx openapps login --email you@example.com` for a terminal OTP flow
   when a browser is unavailable.
 
 Outside a project, control-plane commands with an explicit `--app-id` also use
@@ -60,7 +60,7 @@ source remains an intentional wallet-mode selection.
 > **Advanced wallet warning.** If you deliberately choose a wallet source and lose its credentials file
 > without having linked, shared, or backed it up, every app it created can be
 > orphaned forever. Treat wallet keys like SSH private keys: back them up, then run
-> `openapps link` so the apps survive local key loss. Full safety model:
+> `npx openapps link` so the apps survive local key loss. Full safety model:
 > [key-and-account-safety.md](key-and-account-safety.md).
 
 > **Never commit a key.** `BOUNDED_PRIVATE_KEY` and the raw `privateKey` are
@@ -69,31 +69,31 @@ source remains an intentional wallet-mode selection.
 > for keys you drop in a repo by hand. `~/.bounded/web-session.json` is also a
 > local secret and should not be copied into a repo.
 
-> **Running another identity:** use `openapps account use <profile>`,
-> `openapps account use --project`, `openapps account use --env`, or
-> `openapps account use --web` in the project, then `openapps whoami`. Profile keys
+> **Running another identity:** use `npx openapps account use <profile>`,
+> `npx openapps account use --project`, `npx openapps account use --env`, or
+> `npx openapps account use --web` in the project, then `npx openapps whoami`. Profile keys
 > live at `~/.bounded/accounts/<profile>/credentials`, so one project can use your
 > default account and another can use a client/team account without committing
-> secrets. Use `openapps login --email ...` for web mode and `BOUNDED_PRIVATE_KEY`
+> secrets. Use `npx openapps login --email ...` for web mode and `BOUNDED_PRIVATE_KEY`
 > for wallet-mode CI.
 
 | Command | Does | Example |
 |---|---|---|
-| `version` | Print which CLI build you're on (version/commit/date). Same info via `openapps --version` / `-v`. Use after rebuilding the bundle to confirm you picked up the latest. No network/key. `--json` for fields. | `openapps version` |
-| `update` | Update this release build to the latest CLI from its configured HTTPS release host. Downloads the immutable binary for this OS/architecture, verifies the version-bound release signature against the public key compiled into the CLI, then checks the SHA-256 checksum and Go build metadata, and atomically replaces the running executable. Reads no project config, account, or credentials. Builds before `0.0.99` have no trust anchor and must reinstall with the curl installer. A CLI installed from npm (`openapps`, the project dev dependency) is updated by npm instead: `update` prints `npm install -D openapps@latest` and changes nothing. | `openapps update` |
-| `whoami` | Show the active CLI identity: wallet address or web user id, environment, account source, login/link hint if any, and this folder's app marker if present. In JSON, `linkedAccount` names the linked account: the email for an email-approved link, the approving **wallet** for a wallet-approved one, `""` when this key is not linked; read it rather than `email` to decide whether a device still needs `openapps link`. Wallet mode may create the selected key on first run. | `openapps whoami` |
-| `login` | Log the CLI into your OpenApps **web account** (the canonical identity; no key involved). By default it opens the hosted sign-in page, completes Authorization Code + PKCE through a temporary loopback callback, stores refreshable credentials in `~/.bounded/web-session.json`, and selects `account.keySource:"web"` for the current project unless `BOUNDED_ACCOUNT_FILE` supplies the process account. Use `--email <addr>` or `--no-browser` for terminal OTP when a browser is unavailable. **Headless agents:** run `openapps login --email <email>` with stdin held open, relay the 6-digit code from the user, then feed it to stdin. Never ask for or embed a reusable credential. | `openapps login` |
-| `link` | **Wallet-mode anti-loss.** Explicitly attach THIS device's local wallet keypair to your OpenApps account via an **OAuth device flow** (device code + fingerprint approval at the dashboard `/link` page — agents should print the URL the CLI reports for their user), or use `--email` for headless OTP approval. On that page the human signs in with email/social **or a Solana wallet**; a wallet approval keys the linked account by that wallet address, so the link records no email. The link is one explicit wallet-key <-> account pair; `openapps login` does not create it. The keypair keeps signing — linking only adds an account association, it never rolls or replaces the key. Linking is **refused** if it would merge two unlinked accounts that both already own projects. Not used for `account.keySource:"web"`. | `openapps link --email you@example.com` |
-| `account` / `account use` | Show the effective account or set this project's account source in `bounded.json`: global, project, profile, env, or web. A process-only `BOUNDED_ACCOUNT_FILE` override is reported by `account --json`; unset it before `account use`. See [accounts.md](accounts.md#process-account-selection-for-automation). | `openapps account use --web` |
-| `account transfer-to-web` | Move ownership of this key's apps to your web account (run after `openapps login`; linking is NOT required, the CLI proves key possession automatically; `--yes` to confirm, `--app <appId>` repeatable for a subset). Makes the web account the owner-of-record so the key becomes a fully detachable signing credential. Works even when `openapps link` is refused because both sides already own projects. | `openapps account transfer-to-web --yes` |
-| `apps list` | Read-only inventory of every app the active account owns or collaborates on. The `projects` alias is equivalent. JSON output contains `appId`, `name`, `environment`, `protocol`, and optional `sitePrivate`. Confirm the target with `openapps access` before reuse. | `openapps apps list --json` |
-| `apps inspect` | Read-only exact active-publication proof for one owned or shared app. Returns policy and runtime digests, committed operation and revision numbers, availability, protocol, and site privacy without returning policy bytes, a runtime bundle, or a hosted URL. `--app-id` defaults to `bounded.json`. | `openapps apps inspect --app-id <id> --json` |
-| `wallet fund <wallet>` | Add simulated SOL, USDC, or another mint to any wallet inside one `realtime_offchain` app. Requires the app owner, an admin, or a developer. `--mint` defaults to `SOL`; pass `USDC` or a Solana mint address. An unregistered custom mint also requires `--decimals <0-18>`. This never creates real onchain assets. | `openapps wallet fund <wallet> --app-id <id> --mint USDC --amount 1000` |
-| `apps delete` | Permanently delete an owned app: its data, realtime state, hosted site, addresses, functions, secrets, and schedules. Owner only (non-delegable; no collaborator role or grant can reach it) and NEVER one-shot: the command creates a short-lived delete request, opens a hosted confirmation page in the browser where the human types the app name, and polls until the deletion completes. There is no `--yes`. See the `apps delete` section below for the exact flow, refusal codes, and JSON mode. | `openapps apps delete --app-id <id>` |
-| `share <wallet\|email> --role developer\|admin\|viewer\|billing --app-id <id>` | Grant a control role. **Wallet** → direct. **Email** → tracked **by the email** and bound when that person verifies it at signup, so it works for a registered OR brand-new address (invite email sent when outbound email is configured). `policy` is accepted as a legacy alias for `developer`. Owner only. **Plan-gated by the OWNER's plan**: Free = no collaborators; Pro = up to 3, **`developer` only** (admin/viewer/billing 402 with an upgrade hint); Team+ = 25 seats and every role — default to `--role developer` unless the owner is Team+. Share BEFORE loss — there is no key-recovery command (the only ownership move is `account transfer-to-web` to your own web account). See [access-control.md](../../openapps-backend/docs/access-control.md) for what each role can do. | `openapps share teammate@example.com --role developer --app-id <id>` |
-| `unshare <wallet\|email> --app-id <id>` | Remove a wallet or canonical email collaborator (owner only) | `openapps unshare teammate@example.com --app-id <id>` |
-| `collaborators --app-id <id>` | List collaborators (alias: `shares`) | `openapps collaborators --app-id <id>` |
-| `access --app-id <id>` | Show the access roster: your effective role, the app's external-widget setting, and every member grouped by role with per-role counts (the member list is shown only to the owner or an `access:manage` role). | `openapps access --app-id <id>` |
+| `version` | Print which CLI build you're on (version/commit/date). Same info via `npx openapps --version` / `-v`. Use after rebuilding the bundle to confirm you picked up the latest. No network/key. `--json` for fields. | `npx openapps version` |
+| `update` | Update this release build to the latest CLI from its configured HTTPS release host. Downloads the immutable binary for this OS/architecture, verifies the version-bound release signature against the public key compiled into the CLI, then checks the SHA-256 checksum and Go build metadata, and atomically replaces the running executable. Reads no project config, account, or credentials. Builds before `0.0.99` have no trust anchor and must reinstall with the curl installer. A CLI installed from npm (`openapps`, the project dev dependency) is updated by npm instead: `update` prints `npm install -D openapps@latest` and changes nothing. | `npx openapps update` |
+| `whoami` | Show the active CLI identity: wallet address or web user id, environment, account source, login/link hint if any, and this folder's app marker if present. In JSON, `linkedAccount` names the linked account: the email for an email-approved link, the approving **wallet** for a wallet-approved one, `""` when this key is not linked; read it rather than `email` to decide whether a device still needs `npx openapps link`. Wallet mode may create the selected key on first run. | `npx openapps whoami` |
+| `login` | Log the CLI into your OpenApps **web account** (the canonical identity; no key involved). By default it opens the hosted sign-in page, completes Authorization Code + PKCE through a temporary loopback callback, stores refreshable credentials in `~/.bounded/web-session.json`, and selects `account.keySource:"web"` for the current project unless `BOUNDED_ACCOUNT_FILE` supplies the process account. Use `--email <addr>` or `--no-browser` for terminal OTP when a browser is unavailable. **Headless agents:** run `npx openapps login --email <email>` with stdin held open, relay the 6-digit code from the user, then feed it to stdin. Never ask for or embed a reusable credential. | `npx openapps login` |
+| `link` | **Wallet-mode anti-loss.** Explicitly attach THIS device's local wallet keypair to your OpenApps account via an **OAuth device flow** (device code + fingerprint approval at the dashboard `/link` page — agents should print the URL the CLI reports for their user), or use `--email` for headless OTP approval. On that page the human signs in with email/social **or a Solana wallet**; a wallet approval keys the linked account by that wallet address, so the link records no email. The link is one explicit wallet-key <-> account pair; `npx openapps login` does not create it. The keypair keeps signing — linking only adds an account association, it never rolls or replaces the key. Linking is **refused** if it would merge two unlinked accounts that both already own projects. Not used for `account.keySource:"web"`. | `npx openapps link --email you@example.com` |
+| `account` / `account use` | Show the effective account or set this project's account source in `bounded.json`: global, project, profile, env, or web. A process-only `BOUNDED_ACCOUNT_FILE` override is reported by `account --json`; unset it before `account use`. See [accounts.md](accounts.md#process-account-selection-for-automation). | `npx openapps account use --web` |
+| `account transfer-to-web` | Move ownership of this key's apps to your web account (run after `npx openapps login`; linking is NOT required, the CLI proves key possession automatically; `--yes` to confirm, `--app <appId>` repeatable for a subset). Makes the web account the owner-of-record so the key becomes a fully detachable signing credential. Works even when `npx openapps link` is refused because both sides already own projects. | `npx openapps account transfer-to-web --yes` |
+| `apps list` | Read-only inventory of every app the active account owns or collaborates on. The `projects` alias is equivalent. JSON output contains `appId`, `name`, `environment`, `protocol`, and optional `sitePrivate`. Confirm the target with `npx openapps access` before reuse. | `npx openapps apps list --json` |
+| `apps inspect` | Read-only exact active-publication proof for one owned or shared app. Returns policy and runtime digests, committed operation and revision numbers, availability, protocol, and site privacy without returning policy bytes, a runtime bundle, or a hosted URL. `--app-id` defaults to `bounded.json`. | `npx openapps apps inspect --app-id <id> --json` |
+| `wallet fund <wallet>` | Add simulated SOL, USDC, or another mint to any wallet inside one `realtime_offchain` app. Requires the app owner, an admin, or a developer. `--mint` defaults to `SOL`; pass `USDC` or a Solana mint address. An unregistered custom mint also requires `--decimals <0-18>`. This never creates real onchain assets. | `npx openapps wallet fund <wallet> --app-id <id> --mint USDC --amount 1000` |
+| `apps delete` | Permanently delete an owned app: its data, realtime state, hosted site, addresses, functions, secrets, and schedules. Owner only (non-delegable; no collaborator role or grant can reach it) and NEVER one-shot: the command creates a short-lived delete request, opens a hosted confirmation page in the browser where the human types the app name, and polls until the deletion completes. There is no `--yes`. See the `apps delete` section below for the exact flow, refusal codes, and JSON mode. | `npx openapps apps delete --app-id <id>` |
+| `share <wallet\|email> --role developer\|admin\|viewer\|billing --app-id <id>` | Grant a control role. **Wallet** → direct. **Email** → tracked **by the email** and bound when that person verifies it at signup, so it works for a registered OR brand-new address (invite email sent when outbound email is configured). `policy` is accepted as a legacy alias for `developer`. Owner only. **Plan-gated by the OWNER's plan**: Free = no collaborators; Pro = up to 3, **`developer` only** (admin/viewer/billing 402 with an upgrade hint); Team+ = 25 seats and every role — default to `--role developer` unless the owner is Team+. Share BEFORE loss — there is no key-recovery command (the only ownership move is `account transfer-to-web` to your own web account). See [access-control.md](../../openapps-backend/docs/access-control.md) for what each role can do. | `npx openapps share teammate@example.com --role developer --app-id <id>` |
+| `unshare <wallet\|email> --app-id <id>` | Remove a wallet or canonical email collaborator (owner only) | `npx openapps unshare teammate@example.com --app-id <id>` |
+| `collaborators --app-id <id>` | List collaborators (alias: `shares`) | `npx openapps collaborators --app-id <id>` |
+| `access --app-id <id>` | Show the access roster: your effective role, the app's external-widget setting, and every member grouped by role with per-role counts (the member list is shown only to the owner or an `access:manage` role). | `npx openapps access --app-id <id>` |
 
 ### `apps delete` - permanent, browser-confirmed app deletion
 
@@ -124,7 +124,7 @@ The flow is deliberately two-step so a single mistyped command can never
 delete an app:
 
 ```bash
-openapps apps delete --app-id <id>
+npx openapps apps delete --app-id <id>
 ```
 
 1. The CLI creates a delete request (10-minute lifetime) and prints a
@@ -151,10 +151,10 @@ Refusals worth recognizing (409 with a `code`):
   flight; retry once it settles.
 - `app_delete_in_progress` - a confirmed deletion is already executing.
 
-JSON mode never opens a browser. `openapps apps delete --json` creates the
+JSON mode never opens a browser. `npx openapps apps delete --json` creates the
 request and returns `requiresConfirmation:true` with the `confirmUrl`,
 `fingerprint`, and ready-to-run `confirmationArgs`; after the human confirms
-in the browser, `openapps apps delete --app-id <id> --watch --request-id <rid>
+in the browser, `npx openapps apps delete --app-id <id> --watch --request-id <rid>
 --json` polls to the terminal state.
 
 ### `update` — native CLI upgrades
@@ -163,9 +163,9 @@ After the first installer-based setup, update the CLI without piping another
 installer into a shell:
 
 ```bash
-openapps update                 # install a newer published release
-openapps update --force         # reinstall latest if current; upgrade if behind
-openapps update --json          # one structured result for agents
+npx openapps update                 # install a newer published release
+npx openapps update --force         # reinstall latest if current; upgrade if behind
+npx openapps update --json          # one structured result for agents
 ```
 
 `--force` never downgrades a build that is ahead of the published version; it
@@ -175,7 +175,7 @@ arm64. It refuses development builds, unsupported platforms, unsafe executable
 permissions, and symlinked launch paths (including common package-manager
 installations). If a package manager owns the binary, use that package manager;
 the CLI cannot identify every manager-owned regular file. A CLI installed from
-npm is updated with `npm install -D openapps@latest`; `openapps update`
+npm is updated with `npm install -D openapps@latest`; `npx openapps update`
 prints that command instead of replacing the binary.
 
 `BOUNDED_BASE_URL` is a security-sensitive release-host override shared with the
@@ -186,7 +186,7 @@ signature against a public key compiled into the CLI, so a compromised or
 spoofed origin cannot forge an update. `--env` and `BOUNDED_ENV` do not select
 a CLI update channel.
 
-`openapps update` updates only the CLI component and its normal update-check
+`npx openapps update` updates only the CLI component and its normal update-check
 cache. Re-run the installer when the OpenApps agent skill should be refreshed
 too.
 
@@ -200,16 +200,16 @@ powers explicitly via policy rules ([admin-and-ownership.md](../../openapps-back
 ### Machine-readable onboarding
 
 Onboarding commands in `--json` mode keep stdout to exactly one JSON document and keep stderr free of human progress text, including first-use key-creation guidance.
-The successful `openapps init --json` result has `action: "init"`, the written policy and project-config paths, `projectConfigWritten` (false when `bounded.json` was already configured and left unchanged), the selected account source and environment, and `nextCommands`.
-The successful `openapps account use ... --json` result has `action: "accountUse"`, the selected `keySource`, project context, and safe next commands.
-When a wallet source and a saved web session are separate, `openapps whoami --json` reports the condition in `warnings[]` with stable code `unlinked_web_account`, the public wallet address, the web email, and next commands instead of printing a warning beside the JSON.
-Running `openapps account transfer-to-web --json` without `--yes` returns an `action: "transferToWebPreview"` document with `requiresConfirmation: true` and replayable `confirmationArgs`; its `ok: true` means the preview completed, not that ownership moved.
+The successful `npx openapps init --json` result has `action: "init"`, the written policy and project-config paths, `projectConfigWritten` (false when `bounded.json` was already configured and left unchanged), the selected account source and environment, and `nextCommands`.
+The successful `npx openapps account use ... --json` result has `action: "accountUse"`, the selected `keySource`, project context, and safe next commands.
+When a wallet source and a saved web session are separate, `npx openapps whoami --json` reports the condition in `warnings[]` with stable code `unlinked_web_account`, the public wallet address, the web email, and next commands instead of printing a warning beside the JSON.
+Running `npx openapps account transfer-to-web --json` without `--yes` returns an `action: "transferToWebPreview"` document with `requiresConfirmation: true` and replayable `confirmationArgs`; its `ok: true` means the preview completed, not that ownership moved.
 
-`openapps link --json` requires `--email <you@example.com>`.
+`npx openapps link --json` requires `--email <you@example.com>`.
 The interactive browser device flow must expose a verification URL, user code, and security fingerprint before approval, so it is intentionally unavailable when the command must emit only one final JSON document.
-Use `openapps link --email you@example.com --json`, provide the OTP on stdin, and read the single `action: "linked"` result.
+Use `npx openapps link --email you@example.com --json`, provide the OTP on stdin, and read the single `action: "linked"` result.
 The email device-link path performs its own OTP exchange and works without a saved web session.
-For commands that instead require an existing web control-plane session, such as default-web `openapps init` or transfer-to-web, an absent or unrefreshable session in JSON mode fails without opening a browser and directs the caller to run `openapps login --email <you@example.com>` first.
+For commands that instead require an existing web control-plane session, such as default-web `npx openapps init` or transfer-to-web, an absent or unrefreshable session in JSON mode fails without opening a browser and directs the caller to run `npx openapps login --email <you@example.com>` first.
 
 Non-2xx responses and request transport/decode failures from the device start, info, approval, or polling API use `action: "deviceLink"`, the failed `stage`, and either an HTTP `statusCode` or a transport-safe fallback in JSON mode.
 Only `device_confirmation_required`, `device_already_linked`, and `account_link_would_merge_existing_projects` are preserved as upstream machine codes.
@@ -220,7 +220,7 @@ An explicit public `message` field may supply human detail, but an absent messag
 
 ### Project config — `bounded.json`
 
-`openapps init` writes public `bounded.json`; `deploy --create` fills in `appId`.
+`npx openapps init` writes public `bounded.json`; `deploy --create` fills in `appId`.
 Init refuses to run from inside another OpenApps project's directory tree (upward discovery would anchor the scaffold at that ancestor); run it from the project root it names, or pass `--project-root .` to deliberately make the current directory its own project root.
 Agents should read this file first. It is safe to commit and contains no private
 key material. This example explicitly opts into cloud source sync:
@@ -262,27 +262,27 @@ Resolution rules:
 Useful commands:
 
 ```bash
-openapps account                 # show this project's account source
-openapps account use personal    # use ~/.bounded/accounts/personal/credentials
-openapps account use --project   # use <project>/.bounded/credentials
-openapps account use --global    # use ~/.bounded/credentials
-openapps account use --env       # require BOUNDED_PRIVATE_KEY
-openapps account use --web       # use ~/.bounded/web-session.json
-openapps login --email you@example.com
+npx openapps account                 # show this project's account source
+npx openapps account use personal    # use ~/.bounded/accounts/personal/credentials
+npx openapps account use --project   # use <project>/.bounded/credentials
+npx openapps account use --global    # use ~/.bounded/credentials
+npx openapps account use --env       # require BOUNDED_PRIVATE_KEY
+npx openapps account use --web       # use ~/.bounded/web-session.json
+npx openapps login --email you@example.com
 ```
 
 Explicit flags still win for app/environment routing: `--app-id` and `--env`
 override project defaults.
 For wallet/keypair projects, a non-empty `BOUNDED_PRIVATE_KEY` overrides `account.keySource:"global"`, `"project"`, and `"profile"`.
-Check `openapps whoami --json` before an identity-sensitive deploy instead of assuming the public project config selected the active key.
+Check `npx openapps whoami --json` before an identity-sensitive deploy instead of assuming the public project config selected the active key.
 An explicit project `account.keySource:"web"`, and projectless control-plane commands, use the web session.
 App-bound data-plane operations (`data`, `subscribe`, `functions invoke`, `runtime invoke`) also run under the web session **on cloud apps**: the CLI exchanges the platform login for an app-pinned session server-side, so `@user.id` matches the same email's identity on the app's own site.
-A web session holds no local signing key, so writes to `onchain: true` collections that need a client-signed Solana transaction still require a local keypair (`openapps account use --global`, with `"auth": { "wallets": true }` deployed).
-The one signature a web session CAN produce is the mainnet policy-deploy authority permit: `openapps deploy` routes it through a per-deploy browser approval where the account's own wallet signs (see the **openapps-onchain** skill's mainnet section); devnet and offchain deploys stay keyless with no approval.
+A web session holds no local signing key, so writes to `onchain: true` collections that need a client-signed Solana transaction still require a local keypair (`npx openapps account use --global`, with `"auth": { "wallets": true }` deployed).
+The one signature a web session CAN produce is the mainnet policy-deploy authority permit: `npx openapps deploy` routes it through a per-deploy browser approval where the account's own wallet signs (see the **openapps-onchain** skill's mainnet section); devnet and offchain deploys stay keyless with no approval.
 On a **OpenApps Local** connection the web lane is refused outright: the app lives only in your stack while web login is brokered by the shared staging issuer, so local data commands use the keypair lane.
 Older projects with only `.bounded/app.json` still work; the CLI falls back to that marker when `bounded.json` is absent.
 
-`openapps whoami --json` separates the stable machine value from the descriptive location:
+`npx openapps whoami --json` separates the stable machine value from the descriptive location:
 
 ```json
 {
@@ -296,7 +296,7 @@ Older projects with only `.bounded/app.json` still work; the CLI falls back to t
 
 `keySource` is one of `global`, `project`, `env`, `web`, `profile`, or `unknown`.
 Use `keySource` for release checks and `keyLocation` only as a human-readable diagnostic.
-The human `openapps whoami` output continues to print the descriptive location.
+The human `npx openapps whoami` output continues to print the descriptive location.
 Identity-sensitive automation should also require the expected environment, `authSource`, public identity, and absence of an unexpected `connection` object.
 
 Cloud source sync is opt-in and rides the deploy: set `"sourcePush": true` in
@@ -391,28 +391,28 @@ treatment: [key-and-account-safety.md](key-and-account-safety.md).
 | `deploy status` | Read-only: what holds the app's deploy slot, and whether a fresh deploy is safe. Never mutates. | `--app-id` (defaults to `bounded.json`), `--json` |
 | `deploy preflight` | Read-only: whether a deploy will land - your credit balance (deploys are metered against credits, no per-tier cap), the deploy rate-limit, and the structural size caps. Advice, never a promise; never mutates. | `--app-id` (defaults to `bounded.json`), `--json` |
 | `clone <appId> [dir]` | Clone the app's cloud source repository with the active control-plane identity (browser session by default), then preserve that identity in the checkout. `--link` is only for an explicitly selected wallet key whose source access is denied. | `--branch`, `--link` |
-| `pull` | Fast-forward a openapps clone to its current cloud source | `--dry-run`, `--reset` |
+| `pull` | Fast-forward a npx openapps clone to its current cloud source | `--dry-run`, `--reset` |
 
 ```bash
-openapps init                                            # scaffold policy.json + bounded.json
-openapps deploy --create --name my-app                   # create app + record appId; offchain apps get a public hosted site
-openapps deploy --create --name my-app --private         # hosted site behind the private gate from the start
-openapps tests run                                       # policy-tests/*.json against LOCAL policy.json
-openapps deploy                                          # redeploy using bounded.json
+npx openapps init                                            # scaffold policy.json + bounded.json
+npx openapps deploy --create --name my-app                   # create app + record appId; offchain apps get a public hosted site
+npx openapps deploy --create --name my-app --private         # hosted site behind the private gate from the start
+npx openapps tests run                                       # policy-tests/*.json against LOCAL policy.json
+npx openapps deploy                                          # redeploy using bounded.json
 ```
 
 `deploy --create` rejects an unknown `--protocol` locally before any network call and lists the valid app protocols.
 The new app's hosted site is public by default on an offchain protocol (`realtime_offchain`, the Poofnet simulator) and private by default on an onchain one (devnet, mainnet).
-`--public` or `--private` overrides it, and the created-app line names the visibility and the `openapps site privacy public|private --app-id <id>` command that flips it.
-`openapps verify` is experimental and opt-in (`--experimental`); its report format lives in [formal verification](../../openapps-backend/docs/formal-verification.md).
+`--public` or `--private` overrides it, and the created-app line names the visibility and the `npx openapps site privacy public|private --app-id <id>` command that flips it.
+`npx openapps verify` is experimental and opt-in (`--experimental`); its report format lives in [formal verification](../../openapps-backend/docs/formal-verification.md).
 
 Use the offline plugin reference before authoring an onchain hook:
 
 ```bash
-openapps plugins list
-openapps plugins list --family "Pump Fun" --json
-openapps plugins describe @PumpFunPlugin.buyExactSolIn
-openapps plugins describe buyExactSolIn --json
+npx openapps plugins list
+npx openapps plugins list --family "Pump Fun" --json
+npx openapps plugins describe @PumpFunPlugin.buyExactSolIn
+npx openapps plugins describe buyExactSolIn --json
 ```
 
 These commands need no account, project, or network.
@@ -425,12 +425,12 @@ On Free, `deploy --create` stops with HTTP `429 project_daily_limit_exceeded`
 once the account has created 20 projects in the last 24 hours; `resetsAtMs`
 and `Retry-After` say when the next create fits.
 Do not retry with another identity, and do not retry before the window reopens.
-To continue sooner, run `openapps apps list --json`, then use
-`openapps access --app-id <id> --json` to confirm an exact user-approved
+To continue sooner, run `npx openapps apps list --json`, then use
+`npx openapps access --app-id <id> --json` to confirm an exact user-approved
 project and its deploy rights before reuse.
 The listed `protocol` must already match the intended runtime because
 `--protocol` applies only during creation.
-Configure the approved `appId` and run `openapps deploy` without `--create`.
+Configure the approved `appId` and run `npx openapps deploy` without `--create`.
 Never delete or repurpose an app automatically to bypass the limit; deleting
 apps does not free the window.
 If no compatible project is approved and the user does not want to wait,
@@ -537,7 +537,7 @@ The current CLI turns the owner-visible response into one structured error:
   "error": "<human error plus recovery guidance>",
   "code": "deploy_in_progress",
   "operationId": "<uuid>",
-  "recoveryCommand": "openapps deploy ./policy.json --app-id <id> --recover-operation <uuid> --env staging"
+  "recoveryCommand": "npx openapps deploy ./policy.json --app-id <id> --recover-operation <uuid> --env staging"
 }
 ```
 
@@ -566,14 +566,14 @@ Successful recovery returns action `recoverPolicyDeploy` with the normal committ
 Do not rerun a normal deploy, guess an operation ID, copy one from another app, or scrape internal storage.
 Do not edit release pointers or publication revisions by hand.
 The control plane reconciles a retained candidate with destination revision high-water marks without weakening those monotonic fences.
-If the response has no operation ID, confirm the active identity with `openapps whoami` and let the verified owner obtain and run the recovery command.
-After recovery commits, poll `openapps apps inspect --app-id <id> --json` for the expected active publication instead of treating the recovery line as final provenance.
+If the response has no operation ID, confirm the active identity with `npx openapps whoami` and let the verified owner obtain and run the recovery command.
+After recovery commits, poll `npx openapps apps inspect --app-id <id> --json` for the expected active publication instead of treating the recovery line as final provenance.
 
 For a Solana Devnet policy recovery, the server reads the finalized onchain policy inventory before deciding what the retained operation may publish:
 
 - If finalized state exactly matches the retained target, recovery publishes the frozen app/runtime target without replaying an onchain mutation.
 - If finalized state exactly matches the source, the earlier chain mutation did not apply.
-  The retained operation becomes terminal and a fresh normal `openapps deploy` creates the next operation.
+  The retained operation becomes terminal and a fresh normal `npx openapps deploy` creates the next operation.
 - If finalized state is temporarily unavailable, the operation remains locked and pollable.
   Keep using the exact recovery command after a polling timeout.
 - If finalized state is partial or contradictory, the operation remains locked for manual intervention.
@@ -581,7 +581,7 @@ For a Solana Devnet policy recovery, the server reads the finalized onchain poli
 
 ### Will this deploy land? (`openapps deploy preflight`)
 
-`openapps deploy preflight --json` is the read-only answer to "will a deploy succeed right now".
+`npx openapps deploy preflight --json` is the read-only answer to "will a deploy succeed right now".
 Deploys are **metered against your credit balance** - each deploy leg charges its actual Cloudflare
 infra cost (sub-cent; there is **no per-tier deploy cap and no minimum charge**), so the real gate is
 whether you have credits. Run it before a deploy so an agent can tell the user exactly what will
@@ -609,7 +609,7 @@ apply to every tier.
 
 ### Is a fresh deploy safe? (`openapps deploy status`)
 
-`openapps deploy status --json` is the read-only answer to "what is holding this
+`npx openapps deploy status --json` is the read-only answer to "what is holding this
 app's deploy slot". Use it after any ambiguous deploy, before deciding between a
 recovery and a fresh deploy.
 
@@ -650,7 +650,7 @@ resumable - `recoveryCommand`:
   still resumes it once the platform-side defect is fixed.
   `auth_expired` (a `401`) means YOUR login died mid-reconciliation and could
   not be refreshed without a prompt - the operation itself is untouched. Sign
-  in again (`openapps login`), then run the recovery command.
+  in again (`npx openapps login`), then run the recovery command.
   The client re-resolves its bearer before every polling request, so this
   outcome normally appears only when the session is truly gone (for example a
   revoked refresh token).
@@ -658,7 +658,7 @@ resumable - `recoveryCommand`:
   superseded, target-mismatch, permission (`403`), invalid-input, and
   manual-intervention outcomes): NO `recoveryCommand` is emitted, because
   re-running the operation can never commit. The message says whether to run a
-  fresh `openapps deploy` or to escalate for operator review.
+  fresh `npx openapps deploy` or to escalate for operator review.
 - **Mainnet creation fence** (`409` with `onchain_creation_pending`,
   `onchain_creation_unreadable`, `onchain_creation_superseded`, or
   `onchain_creation_owner_conflict`): classified definitive, so no
@@ -666,7 +666,7 @@ resumable - `recoveryCommand`:
   above. These refusals mean the app's mainnet creation never finished: its
   on-chain owner is not proven at finalized yet. They are raised BEFORE any
   permit is minted or signed, so nothing was spent and no signature was burned.
-  Re-run the same `openapps deploy` against the same app id; the platform makes
+  Re-run the same `npx openapps deploy` against the same app id; the platform makes
   one finalized read, resumes the original creation from the app's own journaled
   operation, and lifts the fence when the account is there. Do not re-run
   `--create` and do not create a replacement app - the original app's on-chain
@@ -681,10 +681,10 @@ someone else's operation.
 
 ### Exact release provenance
 
-`openapps apps inspect --app-id <id> --json` reads the immutable publication
+`npx openapps apps inspect --app-id <id> --json` reads the immutable publication
 that currently authorizes runtime requests.
 It is the recovery seam to use after a committed deploy, and it is also useful
-when a release starts from an app selected through `openapps apps list`.
+when a release starts from an app selected through `npx openapps apps list`.
 The caller must own or collaborate on the app.
 Unknown and unauthorized app IDs both return not found.
 Legacy apps, an in-flight publication, a non-policy runtime head, or malformed
@@ -726,7 +726,7 @@ may legitimately differ from the submitted-policy digest.
 Retain these active-publication fields as provenance instead of substituting a
 raw local-file digest.
 This inspection carries no site host or URL.
-Use the environment-qualified `slugUrl` from `openapps domains list --app-id <id> --env <environment> --json`, or the `url` retained from the exact successful `openapps site deploy ... --env <environment> --json` receipt, for hosted-site provenance.
+Use the environment-qualified `slugUrl` from `npx openapps domains list --app-id <id> --env <environment> --json`, or the `url` retained from the exact successful `npx openapps site deploy ... --env <environment> --json` receipt, for hosted-site provenance.
 For staging provenance, require the JSON field itself instead of copying a human-rendered hostname.
 For release automation, require an exact app ID, protocol, site privacy,
 submitted policy digest, `state == "committed"`, `status == "available"`,
@@ -735,7 +735,7 @@ Poll this read-only command for a bounded window after deploy because the
 active read can lag the mutation receipt.
 Fifteen attempts at two-second intervals is the canonical staging release
 window; fail closed if no exact match appears.
-Run `openapps tests run --deployed-policy --app-id <id> --json` only after that
+Run `npx openapps tests run --deployed-policy --app-id <id> --json` only after that
 exact active read when the release must prove the deployed revision rather
 than the local policy override.
 Inspect again after the tests and require the operation, digests, and revisions
@@ -751,7 +751,7 @@ For a release whose acceptance evidence overlays a capability or support catalog
 That creates a fixed point: acceptance certifies artifact D1, adding the receipt produces different bytes D2, and the embedded receipt no longer certifies the deployed artifact.
 Generate only the immutable inventory baseline before deployment.
 After every successful deployment, publish a public-read and authority-write OpenApps release record with `state: "deployed_unverified"`, the deployed commit, app ID, exact site deployment and hashes, and exact active policy/runtime publication.
-Publish the root and all ordered scenario-contract records in one atomic `openapps data set-many` request, then independently read and compare every public document.
+Publish the root and all ordered scenario-contract records in one atomic `npx openapps data set-many` request, then independently read and compare every public document.
 Keep the full atomic request below the realtime request-size limit as well as the 100-document bundle limit.
 That new epoch invalidates every earlier acceptance receipt, even when its program or policy happens to match.
 
@@ -778,7 +778,7 @@ Concrete allow/deny examples against a fresh sandbox app: the fast pre-deploy
 check for a policy. Full format and semantics:
 [policy-tests.md](../../openapps-backend/docs/policy-tests.md).
 
-`openapps tests run` defaults to reading `policy-tests/*.json` and sends them
+`npx openapps tests run` defaults to reading `policy-tests/*.json` and sends them
 inline with the **local** `policy.json` as the policy under test — no push
 needed, the pre-deploy loop. `--deployed-policy` tests against the app's
 already-deployed policy instead. `--file` (repeatable) narrows to specific
@@ -813,13 +813,13 @@ work to the build agent is a different product, not a shortcut for the same one.
 | `builds gate <runId> <gateId>` | Decide a gate that parked a run | `--approve` / `--reject` (exactly one), `--note`, `--app-id` |
 
 ```bash
-openapps create "a notes app with tags and search"   # create + first build + watch
-openapps edit "add a dark mode toggle"               # iterate on the linked app
-openapps builds list --limit 5
-openapps builds watch                                # reattach to the newest live run
+npx openapps create "a notes app with tags and search"   # create + first build + watch
+npx openapps edit "add a dark mode toggle"               # iterate on the linked app
+npx openapps builds list --limit 5
+npx openapps builds watch                                # reattach to the newest live run
 ```
 
-Either login lane works: a web session (`openapps login`) or a local signing key.
+Either login lane works: a web session (`npx openapps login`) or a local signing key.
 `create` records the new app the same way `deploy --create` does, so `edit` and
 `builds` resolve it from the project with no `--app-id`.
 
@@ -827,7 +827,7 @@ Either login lane works: a web session (`openapps login`) or a local signing key
 gate, so its url shows visitors the private-site page until you publish it:
 
 ```bash
-openapps site privacy public --app-id <id>
+npx openapps site privacy public --app-id <id>
 ```
 
 Each edit builds on the app's last published deployment, exactly like a widget edit.
@@ -846,7 +846,7 @@ and the terminal `promoted`, `failed`, `canceled`, `rejected`, `expired`,
 `promoted` returns that same document as the error envelope with `ok: false` and
 `code` set to the failure reason. `--no-watch` emits the acknowledgement
 (`appId`, `runId`, `state: "queued"`) and exits 0, which is the shape to use when
-an agent wants to drive `openapps builds watch --json` itself. A detach or a
+an agent wants to drive `npx openapps builds watch --json` itself. A detach or a
 `--timeout` expiry is likewise one document, with `detached: true` and the
 last-seen state.
 
@@ -862,19 +862,19 @@ Creation is journaled by idempotency key, so a create that reports the prior
 attempt as still converging is waited out on the same key rather than creating a
 second app.
 
-After a promoted run, `openapps clone <appId>` brings the generated source down
-locally; `openapps pull` fast-forwards it afterwards.
+After a promoted run, `npx openapps clone <appId>` brings the generated source down
+locally; `npx openapps pull` fast-forwards it afterwards.
 
 ## Cloud source sync
 
 Source rides the deploy: with `"sourcePush": true` in `bounded.json` (or
-`--with-source` on the command), `openapps deploy` and `openapps site deploy`
+`--with-source` on the command), `npx openapps deploy` and `npx openapps site deploy`
 also push the project tree to the app's cloud source repository and print
 `source synced: <sha>`. A source-push failure after a successful deploy warns
-but does not fail the deploy. `openapps clone` / `openapps pull` read the same
+but does not fail the deploy. `npx openapps clone` / `npx openapps pull` read the same
 repository. Full model: [source-sync.md](source-sync.md).
 
-`openapps site deploy ... --json` always keeps stdout to one JSON document.
+`npx openapps site deploy ... --json` always keeps stdout to one JSON document.
 Successful deploys, post-upload editing-base failures, and recovery failures after an implicit app was durably created use the aggregate document below instead of emitting one document per phase.
 Pre-mutation failures and control-token or upload failures against an existing app can instead use the ordinary root JSON error shape because no new app or landed upload needs a recovery receipt.
 It has `action: "siteDeploy"`, top-level `ok`, `status`, `partial`, `siteLive`, `appId`, and any upload `deployId` or `url`, plus component objects named `upload`, `sourceSync`, `editingBase`, and `classification`.
@@ -896,9 +896,9 @@ Treat that `appId` as the recovery handle because the app exists even though the
 If starter-policy acknowledgement or source validation fails after creation, `upload.reason` is `starter_policy_validation_failed` and the partial warning code is `app_not_linked_after_create`.
 The response never reflects untrusted starter-policy response fields.
 Keep the returned `appId`, leave the project unlinked, and do not retry the source-backed deploy until the control-plane response is healthy.
-If a warning says the local marker or project config was not written, correct the local problem and retry against the same app with `openapps site deploy <dir> --app-id <appId>` instead of creating another app.
+If a warning says the local marker or project config was not written, correct the local problem and retry against the same app with `npx openapps site deploy <dir> --app-id <appId>` instead of creating another app.
 
-For a canonical `openapps site deploy [dir]`, enabling source with
+For a canonical `npx openapps site deploy [dir]`, enabling source with
 `--with-source` or `"sourcePush": true` also preflights and uploads a
 deterministic widget editing base containing the filtered source and exact
 deployed frontend bytes. It accepts only a receipt bound to the authoritative
@@ -911,7 +911,7 @@ warning. Frontend variants never change the canonical editing base. See
 [source-sync.md](source-sync.md#canonical-sites-also-establish-the-widget-editing-base)
 for limits and recovery semantics.
 
-The remote-edit era surface (`openapps dev`, `openapps live-edit`, `openapps dashboard`, and the loopback daemon on 8085/8008) is removed. `openapps edit "<prompt>"` is the live prompt-build command.
+The remote-edit era surface (`npx openapps dev`, `npx openapps live-edit`, `npx openapps dashboard`, and the loopback daemon on 8085/8008) is removed. `npx openapps edit "<prompt>"` is the live prompt-build command.
 
 The widget
 uses the animated OpenApps mark as the launcher, saves its corner placement and
@@ -923,15 +923,15 @@ state, and sends the selected local runner (`codex`, `claude`, `opencode`,
 
 ### `propose` / `proposals` - OpenApps code changes
 
-`openapps propose` posts the changes in a openapps clone to an OpenApps app's page as a code change, or shows them without sending anything.
+`npx openapps propose` posts the changes in a npx openapps clone to an OpenApps app's page as a code change, or shows them without sending anything.
 Submitting a code change grants no write access: it is an idea with its implementation attached, and the app's agent decides whether to build it.
 For a no-AI frontend update by an external coding agent acting for the creator of an Owned app, use [creator publishing](quickstart.md#publish-an-owned-openapps-frontend-from-local-source).
 What the agent builds ships the way every change does, on a preview through the app's release decision, where the creator or the holders approve or veto it.
 Choose one mode; with neither, the command exits without touching anything.
 
 ```bash
-openapps propose --title "Show the streak counter" --dry-run
-openapps propose --title "Show the streak counter" --description "It was hidden in the menu" --slug night-walk-1oqr --submit
+npx openapps propose --title "Show the streak counter" --dry-run
+npx openapps propose --title "Show the streak counter" --description "It was hidden in the menu" --slug night-walk-1oqr --submit
 ```
 
 `--dry-run` reads only the local project configuration and Git checkout, prints the exact diff and its `draft hash`, and never opens a venue session or writes anything.
@@ -954,33 +954,33 @@ Applied as is, the agent applies the patch exactly as written, and ships nothing
 Either way this starts an app-agent run, requires its normal funding, and goes through the app's release decision; the agent replies in the thread with what it did.
 
 Both modes take the diff against the published remote-tracking head by default, or against `--base <revision>` when supplied.
-If the checkout has no `origin/<current-branch>` tracking ref, the command warns and falls back to the exact local `HEAD`; run `openapps pull` or pass `--base` when that is not the intended baseline.
+If the checkout has no `origin/<current-branch>` tracking ref, the command warns and falls back to the exact local `HEAD`; run `npx openapps pull` or pass `--base` when that is not the intended baseline.
 The reported base is always the resolved exact commit object ID, never a moving symbolic ref such as `HEAD`.
 Top-level `bounded.json` and `.gitignore` clone plumbing are excluded.
 Untracked files are refused instead of silently omitted, and one diff is capped at 512 KiB.
 
-`openapps proposals [slug]` is a read-only venue command for listing the venue's older `governance/<slug>/proposals` backlog newest-first.
+`npx openapps proposals [slug]` is a read-only venue command for listing the venue's older `governance/<slug>/proposals` backlog newest-first.
 It accepts `--app-id`, `--venue-app-id`, `--slug`, and `--limit`.
 
 ## Billing
 
-`openapps billing ...` manages the caller's own OpenApps account: a Pro or Team
+`npx openapps billing ...` manages the caller's own OpenApps account: a Pro or Team
 subscription, OpenApps credits, and the Stripe Customer Portal.
 
 | Command | Does | Example |
 |---|---|---|
-| `billing status` | Show the current OpenApps plan, daily project-create limit, and bucket status | `openapps billing status` |
-| `billing checkout` | Start OpenApps Pro or Team. `--plan pro\|team`, `--print`, `--no-open`, `--no-wait` | `openapps billing checkout --plan pro` |
-| `billing topup` | Buy OpenApps credits. `--credits` (20-10,000; $0.05 each), `--print`, `--no-open`, `--no-wait` | `openapps billing topup --credits 100` |
-| `billing portal` | Open Stripe Customer Portal for the OpenApps account | `openapps billing portal` |
-| `upgrade` | Alias for `billing checkout --plan pro` | `openapps upgrade` |
+| `billing status` | Show the current OpenApps plan, daily project-create limit, and bucket status | `npx openapps billing status` |
+| `billing checkout` | Start OpenApps Pro or Team. `--plan pro\|team`, `--print`, `--no-open`, `--no-wait` | `npx openapps billing checkout --plan pro` |
+| `billing topup` | Buy OpenApps credits. `--credits` (20-10,000; $0.05 each), `--print`, `--no-open`, `--no-wait` | `npx openapps billing topup --credits 100` |
+| `billing portal` | Open Stripe Customer Portal for the OpenApps account | `npx openapps billing portal` |
+| `upgrade` | Alias for `billing checkout --plan pro` | `npx openapps upgrade` |
 
 `billing checkout` creates OpenApps' own subscription. It does not create
 subscriptions for an app's end users.
 
 Checkout and top-up open Stripe, then WAIT for the payment to be applied and say
 whether it landed - a completed Stripe checkout is not yet an applied plan.
-`--no-wait` skips the wait; check with `openapps billing status` instead.
+`--no-wait` skips the wait; check with `npx openapps billing status` instead.
 
 Credits are one fungible pool spendable on anything metered: managed services,
 AI, and infrastructure. The old per-bucket top-ups are retired.
@@ -993,16 +993,16 @@ Reads never bill; `invoke` from a function does (see the openapps-backend
 
 | Command | Does | Example |
 |---|---|---|
-| `services search <query>` | Search the catalog. Each item carries a readiness: `live` (call it now with `ctx.services.invoke(slug)`), `callable` (an x402-priced API; call it now through `ctx.services.invoke("X402_FETCH", { url })`), `requestable` (not on OpenApps yet), or `disabled` (OpenApps has it but it is switched off here; `unavailableReason` says why - do not file a request for it). `--limit` | `openapps services search "current weather" --json` |
-| `services describe <slug>` | One toolkit or tool with its input schema and readiness. An unknown target answers `capability_not_supported` with the Hub link and exits nonzero. `--limit` | `openapps services describe CAP_WEATHER_NOW --json` |
-| `services request "<what you need>"` | File a capability request with the Capability Hub under your account, once, platform-wide. `--title`, `--desired-action`, `--approach`, `--provider`, `--transport`, `--idempotency-key` (replays file nothing new) | `openapps services request "current weather for a lat/lng pair"` |
-| `services status [requestId]` | Every request filed under this account, or one, with its status and the slug once live | `openapps services status` |
+| `services search <query>` | Search the catalog. Each item carries a readiness: `live` (call it now with `ctx.services.invoke(slug)`), `callable` (an x402-priced API; call it now through `ctx.services.invoke("X402_FETCH", { url })`), `requestable` (not on OpenApps yet), or `disabled` (OpenApps has it but it is switched off here; `unavailableReason` says why - do not file a request for it). `--limit` | `npx openapps services search "current weather" --json` |
+| `services describe <slug>` | One toolkit or tool with its input schema and readiness. An unknown target answers `capability_not_supported` with the Hub link and exits nonzero. `--limit` | `npx openapps services describe CAP_WEATHER_NOW --json` |
+| `services request "<what you need>"` | File a capability request with the Capability Hub under your account, once, platform-wide. `--title`, `--desired-action`, `--approach`, `--provider`, `--transport`, `--idempotency-key` (replays file nothing new) | `npx openapps services request "current weather for a lat/lng pair"` |
+| `services status [requestId]` | Every request filed under this account, or one, with its status and the slug once live | `npx openapps services status` |
 
 ## Open Apps - `oapp`
 
 | Command | Does | Example |
 |---|---|---|
-| `oapp preflight` | Dry-run, as the owner, what the request to open the app on openapps.xyz reads off the deployed app: the synced source, the dist (`static` or `built`; `unreproducible` and `none`, a backend-only app, are refused by the request with `oapp_opening_dist_not_reproducible` and `oapp_app_release_site_missing`), the `service:cap` / `service:x402` grants, and every finding the request would be refused on, with its capability-ladder verdict (`native`, `live`, `callable`, `request`). READY means none of these would refuse the request. Exits nonzero when the report is not READY. `--app-id` | `openapps oapp preflight --json` |
+| `oapp preflight` | Dry-run, as the owner, what the request to open the app on openapps.xyz reads off the deployed app: the synced source, the dist (`static` or `built`; `unreproducible` and `none`, a backend-only app, are refused by the request with `oapp_opening_dist_not_reproducible` and `oapp_app_release_site_missing`), the `service:cap` / `service:x402` grants, and every finding the request would be refused on, with its capability-ladder verdict (`native`, `live`, `callable`, `request`). READY means none of these would refuse the request. Exits nonzero when the report is not READY. `--app-id` | `npx openapps oapp preflight --json` |
 
 ### `--constants`
 
@@ -1012,7 +1012,7 @@ Digit-only values ≤15 chars inline as numbers; everything else is wrapped as a
 string literal.
 
 ```bash
-openapps deploy ./policy.json --app-id <id> --constants CAP=5000,ADMIN=8xY...
+npx openapps deploy ./policy.json --app-id <id> --constants CAP=5000,ADMIN=8xY...
 ```
 
 > Prefer an in-policy `constants` block + `@const.NAME` (resolved server-side) for
@@ -1027,8 +1027,8 @@ whose own `environments` allowlist excludes it, targets its `appId`, and strips
 the block before shipping a normal policy. One file → many apps.
 
 ```bash
-openapps deploy ./policy.json --environment preview      # preview appId + preview constants
-openapps deploy ./policy.json --environment production   # production appId + production constants
+npx openapps deploy ./policy.json --environment preview      # preview appId + preview constants
+npx openapps deploy ./policy.json --environment production   # production appId + production constants
 ```
 
 Accepted by `deploy`, `tests run`, and `functions deploy --all`, which resolve it
@@ -1045,33 +1045,33 @@ Full treatment: [environments.md](environments.md).
 
 | Command | Does | Example |
 |---|---|---|
-| `runtime init [dir]` | Scaffold a backend project (`bounded.manifest` + `index.ts` agent) | `openapps runtime init my-agent` |
-| `runtime deploy [dir]` | Bundle source + custom npm deps and deploy backend code through OpenApps | `openapps runtime deploy --app-id <id>` |
-| `runtime info` | Show deployed backend runtime details | `openapps runtime info --app-id <id>` |
-| `runtime invoke <agent>` | Invoke a deployed agent/backend through OpenApps (attaches your session token) | `openapps runtime invoke my-agent --app-id <id> --data '{}'` |
-| `live deploy <file>` | Upload a native `session.live` module (`init`/`tick`/`views`) to the code registry; the policy still declares the room binding | `openapps live deploy pong.live.ts --app-id <id>` |
-| `live intent <room-path>` | Send one authenticated live intent to a room and arm/cold-start the live loop | `openapps live intent rooms/r1 --app-id <id> --intent '{"type":"join"}'` |
-| `live status <room-path>` | Show live room diagnostics (`available`, `running`, `stopReason`, `etag`, `generation`, tick/alarm times). Passive (never starts the room); the detailed shape requires read access to the room, otherwise a slim `{ available, started, module }` is returned. `--app-id` defaults to `bounded.json`. | `openapps live status rooms/r1` |
-| `secret put <NAME> [VALUE]` | Set/update a backend secret for an app. Prefer `--value-stdin`, `--value-env`, or the hidden prompt so the value is not placed in argv; legacy `VALUE` still works with a warning. `--preview` sets the value the app's previews receive instead (typically a test key), its live previews at once and new ones when created; the app's own values never reach a preview. `--agent --host <host>` puts the key on the app's OpenApps agent instead, sent only to those hosts. | `printf '%s' "$STRIPE_KEY" \| openapps secret put STRIPE_KEY --value-stdin --app-id <id>` |
-| `secret list` | List secret NAMES for an app (never values), its preview value names, and which names its OpenApps agent donated; `--agent` lists the keys on the agent instead | `openapps secret list --app-id <id>` |
-| `secret rm <NAME>` | Remove a secret; `--preview` removes the preview value and `--agent` the agent's key instead | `openapps secret rm STRIPE_KEY --app-id <id>` |
-| `site deploy [dir]` | Publish a built static frontend (build it with `site build` so it gets `build.env`; default `./dist`, needs `index.html`, or `_bounded_server/server.json` for a [server app](../../openapps-frontend/docs/server-apps.md)) to the app's mapped slug/custom host as one deterministic gzip-tar artifact. Small artifacts use one upload; larger artifacts use resumable multipart chunks of that archive, never per-file uploads. Project source is not synced unless `sourcePush` or `--with-source` explicitly requests it. If no app is linked, creates a private app unless `--public` is passed. Deploys are versioned for static-host rollback. Add `--variant <var_id>` to upload a preview frontend branch without replacing the canonical site. A `402 deploy_credit_insufficient` means the deploying account has no spendable credit for the deploy's infra cost (the CLI prints the credits needed against the balance): `openapps billing status`, then `openapps billing topup --credits <n>`, then retry; it is never an identity problem. | `openapps site deploy ./dist --app-id <id>` |
-| `site build` | Run the build `bounded.json` declares (`build.command`, else `npm run build` from a package.json build script) in the project root, with `build.env` added to the environment; a value already set in the shell wins. `--preview` builds for a preview: `build.previewEnv` replaces the `build.env` values it names. | `openapps site build` |
-| `site env [set NAME VALUE \| rm NAME]` | Show or change `bounded.json` `build.env`, the public values a build reads (`NEXT_PUBLIC_*`, `VITE_*`, `NUXT_PUBLIC_*`, `PUBLIC_*`, `EXPO_PUBLIC_*`, `REACT_APP_*`). Any other name is refused, because the file is published with the source; a private key belongs in `secret put`. `--preview` sets `build.previewEnv` instead: a preview's own value for a name `build.env` sets, at least 8 characters, which an OpenApps release from the preview swaps back to the `build.env` value. | `openapps site env set NEXT_PUBLIC_SUPABASE_URL https://abc.supabase.co` |
-| `site seed-build-base [dir]` | Prepare the current canonical CLI deployment for hosted-widget editing from the filtered local source and exact local frontend bytes (default `./dist`). `--deploy-id` pins the expected current deployment; any deployment, file-digest, or receipt mismatch exits nonzero. | `openapps site seed-build-base --app-id <id> --deploy-id <deploy-id> -- ./dist` |
-| `site variants` | List current frontend variants for owner/admin review: status, deploy id, preview/switch paths, and affected files. | `openapps site variants --app-id <id>` |
-| `site rollback [deployId]` | Roll back the canonical hosted frontend, or pass `--variant <var_id>` to roll back a frontend variant to its previous accepted deploy. Only RETAINED versions are restorable (the newest 10 plus pins); a version that aged out answers `410 site_deploy_expired` - run `site versions` to see what is restorable. | `openapps site rollback --variant var_amit_refunds --app-id <id>` |
-| `site versions` | List retained (restorable) canonical site versions with timestamps, the live version, and pin state. The newest 10 successful canonical versions are kept automatically, whether produced by a direct site deploy or a prompt build/edit promotion; pinned versions are kept in addition; older versions age out. | `openapps site versions --app-id <id> --json` |
-| `site pin <deployId>` | Pin a retained version so it never ages out (additional to the automatic newest 10; user pins are bounded by a per-app cap). Owner/admin only. | `openapps site pin d_ext_abc --app-id <id>` |
-| `site unpin <deployId>` | Remove a pin so the version can age out with normal retention. Owner/admin only. | `openapps site unpin d_ext_abc --app-id <id>` |
-| `site promote <variantId>` | Promote a frontend variant into the canonical hosted site after owner/admin authorization. Backend rules, data, functions, and policies stay unchanged. | `openapps site promote var_amit_refunds --app-id <id>` |
-| `site privacy [status\|private\|public]` | Show or change the hosted static site's gate; applies to vanity slug and active custom-domain hosts for the app, not API hosts | `openapps site privacy public --app-id <id>` |
-| `site preview` | **Preview a PRIVATE (owner-gated) site in a browser WITHOUT making it public.** As owner/admin you already pass the gate; this mints a short-lived, shareable one-click link (`/__bounded/gate/land?token=…`) that sets the gate cookie and lands on the real site, then expires back to the sign-in page. `--ttl <minutes>` (default 60, max 1440), `--host <host>` (defaults to the app's mapped slug/custom domain), `--open` to launch a browser. Authorized web accounts and wallets are supported: the CLI obtains the required app-bound identity token by exchanging the platform session or signing with the selected wallet. The link is a bearer secret until it expires - don't post it publicly. | `openapps site preview --app-id <id> --open` |
-| `site proof [status\|on\|off]` | Opt-in public proof surface: the /__bounded/boundaries page (proof stamp, plain-English invariants, decline count) + the site's Boundaries corner badge. OFF by default | `openapps site proof on --app-id <id>` |
+| `runtime init [dir]` | Scaffold a backend project (`bounded.manifest` + `index.ts` agent) | `npx openapps runtime init my-agent` |
+| `runtime deploy [dir]` | Bundle source + custom npm deps and deploy backend code through OpenApps | `npx openapps runtime deploy --app-id <id>` |
+| `runtime info` | Show deployed backend runtime details | `npx openapps runtime info --app-id <id>` |
+| `runtime invoke <agent>` | Invoke a deployed agent/backend through OpenApps (attaches your session token) | `npx openapps runtime invoke my-agent --app-id <id> --data '{}'` |
+| `live deploy <file>` | Upload a native `session.live` module (`init`/`tick`/`views`) to the code registry; the policy still declares the room binding | `npx openapps live deploy pong.live.ts --app-id <id>` |
+| `live intent <room-path>` | Send one authenticated live intent to a room and arm/cold-start the live loop | `npx openapps live intent rooms/r1 --app-id <id> --intent '{"type":"join"}'` |
+| `live status <room-path>` | Show live room diagnostics (`available`, `running`, `stopReason`, `etag`, `generation`, tick/alarm times). Passive (never starts the room); the detailed shape requires read access to the room, otherwise a slim `{ available, started, module }` is returned. `--app-id` defaults to `bounded.json`. | `npx openapps live status rooms/r1` |
+| `secret put <NAME> [VALUE]` | Set/update a backend secret for an app. Prefer `--value-stdin`, `--value-env`, or the hidden prompt so the value is not placed in argv; legacy `VALUE` still works with a warning. `--preview` sets the value the app's previews receive instead (typically a test key), its live previews at once and new ones when created; the app's own values never reach a preview. `--agent --host <host>` puts the key on the app's OpenApps agent instead, sent only to those hosts. | `printf '%s' "$STRIPE_KEY" \| npx openapps secret put STRIPE_KEY --value-stdin --app-id <id>` |
+| `secret list` | List secret NAMES for an app (never values), its preview value names, and which names its OpenApps agent donated; `--agent` lists the keys on the agent instead | `npx openapps secret list --app-id <id>` |
+| `secret rm <NAME>` | Remove a secret; `--preview` removes the preview value and `--agent` the agent's key instead | `npx openapps secret rm STRIPE_KEY --app-id <id>` |
+| `site deploy [dir]` | Publish a built static frontend (build it with `site build` so it gets `build.env`; default `./dist`, needs `index.html`, or `_bounded_server/server.json` for a [server app](../../openapps-frontend/docs/server-apps.md)) to the app's mapped slug/custom host as one deterministic gzip-tar artifact. Small artifacts use one upload; larger artifacts use resumable multipart chunks of that archive, never per-file uploads. Project source is not synced unless `sourcePush` or `--with-source` explicitly requests it. If no app is linked, creates a private app unless `--public` is passed. Deploys are versioned for static-host rollback. Add `--variant <var_id>` to upload a preview frontend branch without replacing the canonical site. A `402 deploy_credit_insufficient` means the deploying account has no spendable credit for the deploy's infra cost (the CLI prints the credits needed against the balance): `npx openapps billing status`, then `npx openapps billing topup --credits <n>`, then retry; it is never an identity problem. | `npx openapps site deploy ./dist --app-id <id>` |
+| `site build` | Run the build `bounded.json` declares (`build.command`, else `npm run build` from a package.json build script) in the project root, with `build.env` added to the environment; a value already set in the shell wins. `--preview` builds for a preview: `build.previewEnv` replaces the `build.env` values it names. | `npx openapps site build` |
+| `site env [set NAME VALUE \| rm NAME]` | Show or change `bounded.json` `build.env`, the public values a build reads (`NEXT_PUBLIC_*`, `VITE_*`, `NUXT_PUBLIC_*`, `PUBLIC_*`, `EXPO_PUBLIC_*`, `REACT_APP_*`). Any other name is refused, because the file is published with the source; a private key belongs in `secret put`. `--preview` sets `build.previewEnv` instead: a preview's own value for a name `build.env` sets, at least 8 characters, which an OpenApps release from the preview swaps back to the `build.env` value. | `npx openapps site env set NEXT_PUBLIC_SUPABASE_URL https://abc.supabase.co` |
+| `site seed-build-base [dir]` | Prepare the current canonical CLI deployment for hosted-widget editing from the filtered local source and exact local frontend bytes (default `./dist`). `--deploy-id` pins the expected current deployment; any deployment, file-digest, or receipt mismatch exits nonzero. | `npx openapps site seed-build-base --app-id <id> --deploy-id <deploy-id> -- ./dist` |
+| `site variants` | List current frontend variants for owner/admin review: status, deploy id, preview/switch paths, and affected files. | `npx openapps site variants --app-id <id>` |
+| `site rollback [deployId]` | Roll back the canonical hosted frontend, or pass `--variant <var_id>` to roll back a frontend variant to its previous accepted deploy. Only RETAINED versions are restorable (the newest 10 plus pins); a version that aged out answers `410 site_deploy_expired` - run `site versions` to see what is restorable. | `npx openapps site rollback --variant var_amit_refunds --app-id <id>` |
+| `site versions` | List retained (restorable) canonical site versions with timestamps, the live version, and pin state. The newest 10 successful canonical versions are kept automatically, whether produced by a direct site deploy or a prompt build/edit promotion; pinned versions are kept in addition; older versions age out. | `npx openapps site versions --app-id <id> --json` |
+| `site pin <deployId>` | Pin a retained version so it never ages out (additional to the automatic newest 10; user pins are bounded by a per-app cap). Owner/admin only. | `npx openapps site pin d_ext_abc --app-id <id>` |
+| `site unpin <deployId>` | Remove a pin so the version can age out with normal retention. Owner/admin only. | `npx openapps site unpin d_ext_abc --app-id <id>` |
+| `site promote <variantId>` | Promote a frontend variant into the canonical hosted site after owner/admin authorization. Backend rules, data, functions, and policies stay unchanged. | `npx openapps site promote var_amit_refunds --app-id <id>` |
+| `site privacy [status\|private\|public]` | Show or change the hosted static site's gate; applies to vanity slug and active custom-domain hosts for the app, not API hosts | `npx openapps site privacy public --app-id <id>` |
+| `site preview` | **Preview a PRIVATE (owner-gated) site in a browser WITHOUT making it public.** As owner/admin you already pass the gate; this mints a short-lived, shareable one-click link (`/__bounded/gate/land?token=…`) that sets the gate cookie and lands on the real site, then expires back to the sign-in page. `--ttl <minutes>` (default 60, max 1440), `--host <host>` (defaults to the app's mapped slug/custom domain), `--open` to launch a browser. Authorized web accounts and wallets are supported: the CLI obtains the required app-bound identity token by exchanging the platform session or signing with the selected wallet. The link is a bearer secret until it expires - don't post it publicly. | `npx openapps site preview --app-id <id> --open` |
+| `site proof [status\|on\|off]` | Opt-in public proof surface: the /__bounded/boundaries page (proof stamp, plain-English invariants, decline count) + the site's Boundaries corner badge. OFF by default | `npx openapps site proof on --app-id <id>` |
 
 ### Publication history and concurrent deployments
 
-On servers supporting publication receipts, `openapps site versions --app-id <id>` includes server-recorded publication history as well as restorable asset versions.
+On servers supporting publication receipts, `npx openapps site versions --app-id <id>` includes server-recorded publication history as well as restorable asset versions.
 Use `--json` for the full receipt, `--limit 20` to select a page size, and `--cursor <historyCursor>` to read the next page.
 Each new receipt identifies the operation, authenticated actor, server time, previous and resulting deployment, artifact digest, and outcome.
 A `prepared` receipt is not a confirmed publication.
@@ -1094,9 +1094,9 @@ For release-critical public sites, retain the exact successful `site deploy
 --json` receipt and independently verify every uploaded byte through the
 canonical public host.
 Use the receipt's nonempty `url` as the canonical host.
-When recovering without that receipt, run `openapps domains list --app-id <id> --env <environment> --json` and use its nonempty `slugUrl`.
+When recovering without that receipt, run `npx openapps domains list --app-id <id> --env <environment> --json` and use its nonempty `slugUrl`.
 For staging provenance, require the JSON field itself instead of copying a human-rendered hostname.
-`openapps apps inspect` proves the active policy/runtime publication and does not return a host.
+`npx openapps apps inspect` proves the active policy/runtime publication and does not return a host.
 Production normally returns `https://<slug>.bounded.page`, while an isolated staging control plane may return `https://<slug>.staging.bounded.page`.
 Do not rewrite an environment-qualified URL to match the production examples below.
 The current deployment exposes:
@@ -1131,20 +1131,20 @@ Arbitrary HTTP paths on the API host belong to [public functions](../../openapps
 
 | Command | Does | Example |
 |---|---|---|
-| `domains slug [slug]` | Claim one canonical vanity `<slug>.bounded.page` for an app; `--release` frees it | `openapps domains slug myapp --app-id <id>` |
+| `domains slug [slug]` | Claim one canonical vanity `<slug>.bounded.page` for an app; `--release` frees it | `npx openapps domains slug myapp --app-id <id>` |
 | | A freshly claimed slug can take up to ~1 minute to serve at `/` (edge-map propagation); the CLI probes the root and says "propagating" until it actually serves | |
-| `domains list` | List custom domains and refresh pending SSL/ownership status; also includes the app's vanity slug (`slug` + environment-qualified `slugUrl` fields in `--json`) | `openapps domains list --app-id <id> --env <environment> --json` |
-| `domains add <domain>` | Add a custom frontend domain you own (Pro); prints the DNS records to create | `openapps domains add app.yourdomain.com --app-id <id>` |
-| `domains remove <domain>` | Remove a **custom domain** and its routing/origin entry. Does NOT free a vanity slug — that is `domains slug --release`; using it on a slug 404s `domain_not_found` | `openapps domains remove app.yourdomain.com --app-id <id>` |
-| `domains origins` | List extra allowed auth/CORS origins for the app | `openapps domains origins --app-id <id>` |
-| `domains origins add <origin>` | Allow an extra origin to sign in and call the app (https anywhere; http only for localhost). Needed for any host that is not first-party or a registered domain - a tunnel, a preview URL - because wallet sign-in (SIWS) is bound to the browser origin and an unregistered one fails with `relying party not allowed for app`. Register it on the environment the app runs in | `openapps domains origins add https://abc123.ngrok.app --app-id <id> --env staging` |
-| `domains origins remove <origin>` | Remove an extra allowed origin | `openapps domains origins remove https://abc123.ngrok.app --app-id <id>` |
+| `domains list` | List custom domains and refresh pending SSL/ownership status; also includes the app's vanity slug (`slug` + environment-qualified `slugUrl` fields in `--json`) | `npx openapps domains list --app-id <id> --env <environment> --json` |
+| `domains add <domain>` | Add a custom frontend domain you own (Pro); prints the DNS records to create | `npx openapps domains add app.yourdomain.com --app-id <id>` |
+| `domains remove <domain>` | Remove a **custom domain** and its routing/origin entry. Does NOT free a vanity slug — that is `domains slug --release`; using it on a slug 404s `domain_not_found` | `npx openapps domains remove app.yourdomain.com --app-id <id>` |
+| `domains origins` | List extra allowed auth/CORS origins for the app | `npx openapps domains origins --app-id <id>` |
+| `domains origins add <origin>` | Allow an extra origin to sign in and call the app (https anywhere; http only for localhost). Needed for any host that is not first-party or a registered domain - a tunnel, a preview URL - because wallet sign-in (SIWS) is bound to the browser origin and an unregistered one fails with `relying party not allowed for app`. Register it on the environment the app runs in | `npx openapps domains origins add https://abc123.ngrok.app --app-id <id> --env staging` |
+| `domains origins remove <origin>` | Remove an extra allowed origin | `npx openapps domains origins remove https://abc123.ngrok.app --app-id <id>` |
 
 Vanity slugs are free. Custom domains are Pro-gated on the app owner's account.
 If the owner later loses Pro, OpenApps may remove or disable custom domain links;
 keep a vanity `<slug>.bounded.page` fallback available. Custom domains serve the static frontend only; API calls should use
 the app's OpenApps API hostname. Custom domains inherit the app's hosted-site
-privacy gate; use `openapps site privacy private|public --app-id <id>` to change
+privacy gate; use `npx openapps site privacy private|public --app-id <id>` to change
 the vanity and custom static hosts together. For root/apex domains, the
 DNS record may be a CNAME at `@`; if your DNS host rejects that, use a subdomain
 like `www` or move the zone's nameservers to Cloudflare for CNAME flattening.
@@ -1158,15 +1158,15 @@ OpenApps, which enforces the deployed policy atomically. Full semantics:
 
 | Command | Does | Example |
 |---|---|---|
-| `data set` | Write one document | `openapps data set --app-id <id> --path agents/a1/spend/a --data '{"amount":60}'` |
-| `data set-many` | Atomic all-or-nothing batch (**max 100 docs/bundle**) | `openapps data set-many --app-id <id> --from-json bundle.json` |
-| `data delete` | Delete one document (runs the path's `delete` rule) | `openapps data delete --app-id <id> --path agents/a1/spend/a` |
-| `data get` | Read a doc, or list/filter a collection | `openapps data get --app-id <id> --path agents/a1/spend --limit 20` |
-| `data get-many` | Batch-read paths from a JSON array | `echo '["agents/a1/spend/a","agents/a1/spend/b"]' \| openapps data get-many --app-id <id> --from-json /dev/stdin` |
-| `data query` | Run a named policy query | `openapps data query --app-id <id> --name myQuery --args '{"k":"v"}'` |
-| `data aggregate` | Grouped count/sum/avg/min/max | `openapps data aggregate --app-id <id> --path agents/a1/spend --group category --sum amount` |
-| `data search` | Full-text search a collection | `openapps data search --app-id <id> --path notes --query "shipping"` |
-| `subscribe` | **Stream realtime changes** for a path (one JSON line per server message) | `openapps subscribe "tasks/$taskId" --app-id <id>` |
+| `data set` | Write one document | `npx openapps data set --app-id <id> --path agents/a1/spend/a --data '{"amount":60}'` |
+| `data set-many` | Atomic all-or-nothing batch (**max 100 docs/bundle**) | `npx openapps data set-many --app-id <id> --from-json bundle.json` |
+| `data delete` | Delete one document (runs the path's `delete` rule) | `npx openapps data delete --app-id <id> --path agents/a1/spend/a` |
+| `data get` | Read a doc, or list/filter a collection | `npx openapps data get --app-id <id> --path agents/a1/spend --limit 20` |
+| `data get-many` | Batch-read paths from a JSON array | `echo '["agents/a1/spend/a","agents/a1/spend/b"]' \| npx openapps data get-many --app-id <id> --from-json /dev/stdin` |
+| `data query` | Run a named policy query | `npx openapps data query --app-id <id> --name myQuery --args '{"k":"v"}'` |
+| `data aggregate` | Grouped count/sum/avg/min/max | `npx openapps data aggregate --app-id <id> --path agents/a1/spend --group category --sum amount` |
+| `data search` | Full-text search a collection | `npx openapps data search --app-id <id> --path notes --query "shipping"` |
+| `subscribe` | **Stream realtime changes** for a path (one JSON line per server message) | `npx openapps subscribe "tasks/$taskId" --app-id <id>` |
 
 In CLI releases with structured decline propagation, a rejected `data set`, `data set-many`, or `data delete` in `--json` mode preserves the safe server envelope under `decline` without copying unknown response fields.
 For a `rollingSum` rejection, branch on `decline.boundary.cause`; disclosure-gated `cap`, `current`, and `attempted` values can be JSON numbers or exact decimal strings.
@@ -1199,7 +1199,7 @@ state.
 
 ### `subscribe` — realtime watch from the CLI
 
-`openapps subscribe <path> --app-id <id>` opens a realtime subscription (same
+`npx openapps subscribe <path> --app-id <id>` opens a realtime subscription (same
 `ws/v2` protocol and auth as the SDK, under the selected account — a web login
 on cloud apps, or your `~/.bounded/credentials` keypair; see the account
 section above)
@@ -1211,10 +1211,10 @@ data changes:
 
 ```bash
 # a COLLECTION (all docs) or a CONCRETE doc — NOT a "$var" template path
-openapps subscribe "rooms/r1/scores" --app-id <id> | while read -r line; do
+npx openapps subscribe "rooms/r1/scores" --app-id <id> | while read -r line; do
   echo "$line" | jq '.data'   # react to each change
 done
-openapps subscribe "rooms/r1/scores/alice" --app-id <id> --once   # one doc
+npx openapps subscribe "rooms/r1/scores/alice" --app-id <id> --once   # one doc
 ```
 
 **Path semantics (important):** subscribe to a **collection** (`rooms`,
@@ -1222,8 +1222,8 @@ openapps subscribe "rooms/r1/scores/alice" --app-id <id> --once   # one doc
 (`rooms/r1`). Do NOT pass a `$variable` template path like `rooms/$roomId` —
 the `$roomId` is matched literally, finds no document, and returns empty.
 
-The path can be a positional arg (`openapps subscribe <path>`) **or** a `--path`
-flag (`openapps subscribe --path <path>`) — the flag mirrors `openapps data
+The path can be a positional arg (`npx openapps subscribe <path>`) **or** a `--path`
+flag (`npx openapps subscribe --path <path>`) — the flag mirrors `npx openapps data
 get/set` so the same muscle memory works.
 
 Flags: `--once` (exit after the first snapshot — good for a one-shot read),
@@ -1245,7 +1245,7 @@ allowed to read.
 | `--shape '{...}'` | resolve related docs inline |
 
 ```bash
-openapps data get --app-id <id> --path agents/a1/spend \
+npx openapps data get --app-id <id> --path agents/a1/spend \
   --filter '{"amount":{"$gt":10}}' --sort amount:desc --limit 20
 ```
 
@@ -1275,7 +1275,7 @@ does not roll back an earlier one).
 
 ### `data delete`
 
-`openapps data delete --app-id <id> --path <collection>/<id>` removes a single
+`npx openapps data delete --app-id <id> --path <collection>/<id>` removes a single
 document through the same policy-enforced data plane as writes. The path's
 `delete` rule and any invariants are evaluated server-side first; if the rule
 denies the operation nothing is removed. On the wire a delete is just a write
@@ -1289,15 +1289,15 @@ so failing txs still land on-chain. No effect on the realtime data plane.
 
 ## Debugging denied writes — `openapps decisions`
 
-When a write returns `403`, `openapps decisions` shows the realtime backend's
+When a write returns `403`, `npx openapps decisions` shows the realtime backend's
 recent **policy outcomes** for the app (most-recent-first) so you can see
 *why* — each deny carries the failing rule/clause reason.
 
 ```sh
-openapps decisions --app-id <id>                  # recent allows + denies (human table)
-openapps decisions --app-id <id> --denied-only    # only the denials
-openapps decisions --app-id <id> --limit 20       # cap the rows
-openapps decisions --app-id <id> --json           # one JSON object per line (agent-friendly)
+npx openapps decisions --app-id <id>                  # recent allows + denies (human table)
+npx openapps decisions --app-id <id> --denied-only    # only the denials
+npx openapps decisions --app-id <id> --limit 20       # cap the rows
+npx openapps decisions --app-id <id> --json           # one JSON object per line (agent-friendly)
 ```
 
 | Flag | Meaning |
@@ -1320,21 +1320,21 @@ is the only place such a rule is visible, and the only reason `read` appears as
 an action — a served or denied read is not recorded.
 
 Typical loop: a `data set` returns `403 Policy failed: ...` → run
-`openapps decisions --app-id <id> --denied-only` → read the failing-rule reason →
+`npx openapps decisions --app-id <id> --denied-only` → read the failing-rule reason →
 fix the policy or the calling identity.
 
 ## Functions (the imperative escape hatch)
 
 ```sh
-openapps functions deploy <name> --entry <file> --app-id <id> \
+npx openapps functions deploy <name> --entry <file> --app-id <id> \
   --auth '<rule>' [--timeout <sec>] [--secret NAME] \
   [--act-as <address>] [--logs-auth '<rule>'] [--sandbox] \
   [--public [--method <VERB>]... [--cors app|passthrough]]
-openapps functions deploy --all --policy policy.json --environment <env>
-printf '%s' "$VALUE" | openapps secret put NAME --value-stdin --app-id <id>
-openapps functions list   --app-id <id>
-openapps functions invoke <name> --app-id <id> [--data '<json>']
-openapps functions logs   [name] --app-id <id> [--since 2h] [--limit N] [--errors-only]
+npx openapps functions deploy --all --policy policy.json --environment <env>
+printf '%s' "$VALUE" | npx openapps secret put NAME --value-stdin --app-id <id>
+npx openapps functions list   --app-id <id>
+npx openapps functions invoke <name> --app-id <id> [--data '<json>']
+npx openapps functions logs   [name] --app-id <id> [--since 2h] [--limit N] [--errors-only]
 ```
 
 `deploy` uploads the function's code and updates its policy entry for a caller with `functions:deploy`.
@@ -1377,7 +1377,7 @@ the invocation's log entry (and carried to every `ctx.*` hop as
 `x-bounded-correlation-id`), so a frontend error report carrying the header
 value is directly greppable to its exact entry. Same-key retries share the id -
 one business operation groups under one value. Debug loop: a flow
-fails in the browser → `openapps functions logs <fn> --since 1h --errors-only` →
+fails in the browser → `npx openapps functions logs <fn> --since 1h --errors-only` →
 read the invocation's error and console lines. Full guide:
 [functions.md](../../openapps-backend/docs/functions.md).
 
@@ -1389,4 +1389,4 @@ read the invocation's error and console lines. Full guide:
 - [auth.md](../../openapps-frontend/docs/auth.md) — CLI/admin auth sources: wallet/keypair vs web account
 - [access-control.md](../../openapps-backend/docs/access-control.md) — what each control role can do, the `access` block, external contributors & platform super-admins
 - [formal-verification.md](../../openapps-backend/docs/formal-verification.md) — the experimental, opt-in `verify --experimental` proof report
-- [policy-tests.md](../../openapps-backend/docs/policy-tests.md) — `openapps tests` file format and semantics
+- [policy-tests.md](../../openapps-backend/docs/policy-tests.md) — `npx openapps tests` file format and semantics

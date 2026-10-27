@@ -32,8 +32,8 @@ for the full walkthrough. This directory is the runnable artifact behind it.
 ## Proof report (optional, experimental)
 
 ```
-openapps verify --experimental                                   # uses policy.json (per bounded.json)
-openapps verify --experimental policy.verify-today.json
+npx openapps verify --experimental                                   # uses policy.json (per bounded.json)
+npx openapps verify --experimental policy.verify-today.json
 ```
 
 The policy itself is the reference; the report is opt-in ([formal verification](../../../openapps-backend/docs/formal-verification.md)).

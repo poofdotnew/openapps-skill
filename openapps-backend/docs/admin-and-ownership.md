@@ -8,7 +8,7 @@ admin/moderator/owner with data powers (moderation, config, refunds).
 > elevated in-app powers (a forum **moderator**, a game admin) that changes at runtime →
 > you're in the right place: make a data-plane `admins/$userId` collection (below). If the
 > admin **operates the app** (deploys policy/UI, manages billing/settings) — your team —
-> that's the **control plane**: use `openapps share --role` or the `access` block, see
+> that's the **control plane**: use `npx openapps share --role` or the `access` block, see
 > [access-control.md](access-control.md). They're different; the `access` block does NOT
 > replace an `admins` collection. (`get(/admins/...)` = your collection; `get(/__admins__/...)`
 > = the reserved control-plane bridge.)
@@ -33,7 +33,7 @@ governed backend ungovernable. So OpenApps splits authority into two planes:
 
 | Plane | What it covers | Who has it | How |
 |---|---|---|---|
-| **Control plane** | Manage the app: deploy/replace policy + UI, add/remove collaborators, configure functions + secrets, billing, delete the app | **Owner + control roles** (`admin`/`developer`/`viewer`/`billing` + custom) | The owner's CLI account source: wallet/keypair or web account. Wallet keys can be attached with `openapps link`; others use `openapps share --role` / the `access` block — see [access-control.md](access-control.md) and [auth.md](../../openapps-frontend/docs/auth.md) |
+| **Control plane** | Manage the app: deploy/replace policy + UI, add/remove collaborators, configure functions + secrets, billing, delete the app | **Owner + control roles** (`admin`/`developer`/`viewer`/`billing` + custom) | The owner's CLI account source: wallet/keypair or web account. Wallet keys can be attached with `npx openapps link`; others use `npx openapps share --role` / the `access` block — see [access-control.md](access-control.md) and [auth.md](../../openapps-frontend/docs/auth.md) |
 | **Data plane** | Read/write app **data** | **Whoever the policy rules + invariants allow — and ONLY them** | Declared in `policy.json`. **No owner bypass.** |
 
 The owner's legitimate reign is the *control plane* (it's their app). On the
@@ -114,8 +114,8 @@ the row exists, so it is at least as strict as an existence check.)*
 
 ## Linked and web accounts: one stable identity across logins
 
-Web-account login and `openapps share` use the human's OpenApps account identity.
-`openapps link` is only for wallet/keypair CLI sources: it attaches that signing
+Web-account login and `npx openapps share` use the human's OpenApps account identity.
+`npx openapps link` is only for wallet/keypair CLI sources: it attaches that signing
 key (a detachable signing credential) to the same web account so the wallet key
 and web account become admin-collaborators ([auth.md](../../openapps-frontend/docs/auth.md)). Because you gate
 on `@user.id` — the **universal stable identity** (the web account's user id)
@@ -134,7 +134,7 @@ onchain operations where you need a real wallet pubkey.
 There is a chicken-and-egg here that bites every fresh app: a create rule of
 **only** `get(/admins/@user.id).active == true` means you must *already* be an
 active admin to create one. On a brand-new app **nobody** is — the app owner is **not**
-implicitly an admin on the data plane (no god-mode). And `openapps data set` does
+implicitly an admin on the data plane (no god-mode). And `npx openapps data set` does
 **not** bypass create rules: the owner shows up as just another
 `@user.id`, so a genesis `set` to `admins/<owner>` is rejected with
 `403 Policy failed`. There is no system/bootstrap principal that side-steps the
@@ -150,7 +150,7 @@ The idiom that actually works, end to end:
    (shown in the collection above). This is the *only* sanctioned side door, and
    it admits exactly one identity.
 3. **Seed once from the founder identity** — run
-   `openapps data set --path admins/<FOUNDER> --data '{"active":true}'` **as the
+   `npx openapps data set --path admins/<FOUNDER> --data '{"active":true}'` **as the
    founder** (the identity whose `@user.id` equals `@const.FOUNDER`). Seeding
    `active: true` is required, not cosmetic: every privileged gate reads
    `.active == true`, so a row written without it (or with `false`) is inert. The
@@ -161,7 +161,7 @@ The idiom that actually works, end to end:
 
 The `create` rule above is the only write path into the admin scope, so every
 writer is already an admin except for the founder genesis, and there is no extra
-side door hiding in the rules. (Do **not** claim `openapps data set` alone seeds
+side door hiding in the rules. (Do **not** claim `npx openapps data set` alone seeds
 the admin — it is governed by the same create rule and 403s without the genesis
 clause.)
 
@@ -217,7 +217,7 @@ Then:
    requires it.
 4. Add a **genesis clause** (`|| @user.id == @const.FOUNDER`) to the admins
    create rule, then seed the founder's `@user.id` from the founder identity — see
-   the bootstrap flow above. A plain `openapps data set` without the clause 403s.
+   the bootstrap flow above. A plain `npx openapps data set` without the clause 403s.
 5. Gate ownership/membership on `@user.id` (the always-present stable identity),
    not `@user.address`. An email/social login does get a wallet by default, but
    `@user.address` is still null for phone-only sessions, `auth.wallets: false`
@@ -229,7 +229,7 @@ that says *which* X and *to whom*, and let the runtime keep everyone honest.
 
 ## Related
 
-- [auth.md](../../openapps-frontend/docs/auth.md) — CLI auth sources, `openapps login`, `openapps link`, email `openapps share`, collaborators
+- [auth.md](../../openapps-frontend/docs/auth.md) — CLI auth sources, `npx openapps login`, `npx openapps link`, email `npx openapps share`, collaborators
 - [policy-generation-guide.md](policy-generation-guide.md) — the "who is the admin?" step
 - [invariants.md](invariants.md) — the constraints that bind admins too
 - [functions.md](functions.md) — functions are gated by an `auth` rule, same admin pattern

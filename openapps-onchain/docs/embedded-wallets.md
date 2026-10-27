@@ -108,11 +108,11 @@ of them on a deployed `"auth": { "wallets": true }`, because it refuses to mint 
 session for a key it did not provision.
 That covers more than the browser button: bring-your-own wallet login
 (`wallet: true` / `walletLogin`), a server SDK authenticating with a keypair,
-and the CLI's keypair lane (`openapps data` / `functions invoke` under
-`openapps account use --global`) all open the same sign-in-with-Solana session
+and the CLI's keypair lane (`npx openapps data` / `functions invoke` under
+`npx openapps account use --global`) all open the same sign-in-with-Solana session
 and all hit the same gate.
 Add the block only when one of those lanes is in play.
-The CLI's DEFAULT identity (web login via `openapps login`) does not need it on
+The CLI's DEFAULT identity (web login via `npx openapps login`) does not need it on
 a CLOUD app: data commands under a web session exchange the platform login for
 an app session server-side, with no wallet involved.
 An OpenApps Local app is the exception - it can only be reached over the keypair
@@ -246,7 +246,7 @@ Users who already have a Solana wallet can connect it through wallet login.
 This path needs `"auth": { "wallets": true }` deployed in `policy.json` - the
 issuer refuses an external-wallet session without it - and, if the app runs on a
 host that is not first-party (a tunnel, a preview URL), that origin registered
-with `openapps domains origins add https://<host> --app-id <id> --env <env>`,
+with `npx openapps domains origins add https://<host> --app-id <id> --env <env>`,
 because the SIWS proof is bound to the browser origin.
 
 ```ts

@@ -1,20 +1,20 @@
 # Cloud Source Sync — source rides the deploy
 
 OpenApps keeps an optional cloud copy of an app's source tree in the "Artifacts" repository.
-It powers `openapps clone` / `openapps pull` and the public source page of completed-Open oApps (`/__bounded/source`).
+It powers `npx openapps clone` / `npx openapps pull` and the public source page of completed-Open oApps (`/__bounded/source`).
 There is no separate register/sync machinery: **a deploy either carries its source or it does not.**
-An ordinary `openapps site deploy ./dist` uploads only the built static artifact and does not sync source.
+An ordinary `npx openapps site deploy ./dist` uploads only the built static artifact and does not sync source.
 
 ## Enable it
 
-`openapps init` writes it into every new project's `bounded.json`:
+`npx openapps init` writes it into every new project's `bounded.json`:
 
 ```json
 { "sourcePush": true }
 ```
 
 A project created before that default, or one whose config lacks the field, adds the same line; a project that must not sync sets it to `false`.
-With it set, every `openapps deploy` and `openapps site deploy` also pushes
+With it set, every `npx openapps deploy` and `npx openapps site deploy` also pushes
 the project tree to the app's cloud source repository and prints:
 
 ```text
@@ -24,8 +24,8 @@ source synced: <shortsha> (<n> files)
 One-off control on either deploy command:
 
 ```sh
-openapps site deploy ./dist --with-source   # push source this once
-openapps site deploy ./dist --no-source     # skip it this once
+npx openapps site deploy ./dist --with-source   # push source this once
+npx openapps site deploy ./dist --no-source     # skip it this once
 ```
 
 The flag beats the config. With no config and no flag, deploys do not push
@@ -64,7 +64,7 @@ Use the printed command as-is. A retry for the same canonical deployment is
 pinned to its deploy id and the original frontend directory:
 
 ```sh
-openapps site seed-build-base --app-id <id> --deploy-id <deploy-id> -- ./dist
+npx openapps site seed-build-base --app-id <id> --deploy-id <deploy-id> -- ./dist
 ```
 
 `seed-build-base [dir]` defaults to `./dist`. It rebuilds the filtered-source
@@ -92,7 +92,7 @@ editing base.
 - Some deploys carry source, some don't — both are honest states. The repo's
   history is the ledger of which trees were synced and when.
 - Authority: pushing source is part of DEPLOY authority. Whoever may
-  `openapps site deploy` an app may sync the source that produced it. Tokens
+  `npx openapps site deploy` an app may sync the source that produced it. Tokens
   are short-lived, minted per invocation, and never logged.
 
 ## What requires synced source
@@ -100,17 +100,17 @@ editing base.
 - **Handing an existing app to its OpenApps agent** (Launch, "Use an existing app"). The agent's computer works from a clone of the synced source, so the venue refuses the handover with `user_app_source_not_synced` until a deploy with source lands, and a run on an app whose source is missing ends with `hermes_source_not_synced`.
 - **Asking to open an oApp.** The request to open reads the release the app serves, including its synced source revision, and is refused without one (`oapp_app_release_source_not_synced`).
   An OpenApps app's source is public whenever the app is public, and every app that opens is public.
-- **`openapps clone` / `openapps pull`** - read the same repo (read-only
+- **`npx openapps clone` / `npx openapps pull`** - read the same repo (read-only
   tokens, `code:read` authority). Browser login is the default identity, and a
   cloned checkout keeps `account.keySource: web`; `--link` exists only for an
   explicitly selected wallet key.
 
 ## Removed legacy surface (do not suggest these)
 
-The remote-edit era CLI surface is gone: `openapps dev`, `openapps dashboard`, the
+The remote-edit era CLI surface is gone: `npx openapps dev`, `npx openapps dashboard`, the
 localhost dashboard daemon and its `/apps/:appId/propose|validate|deploy` API,
-and the `openapps live-edit` command group (`register`/`validate`/`deploy`, the
-`liveEdit.artifacts`/`artifactPush` knobs). `openapps edit "<prompt>"` is the live
+and the `npx openapps live-edit` command group (`register`/`validate`/`deploy`, the
+`liveEdit.artifacts`/`artifactPush` knobs). `npx openapps edit "<prompt>"` is the live
 prompt-build command. A `liveEdit` block in an old `bounded.json` is ignored with a
 deprecation notice; `liveEdit.artifactPush: true` is honored as `sourcePush:
 true`. Editing happens in your working tree with your own tools; deploying and

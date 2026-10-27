@@ -9,7 +9,7 @@ iterate on it with more prompts, see [Prompt-driven builds](cli-reference.md#pro
 ## Initialize
 
 ```bash
-openapps init
+npx openapps init
 ```
 
 If no valid OpenApps web session exists, the CLI opens hosted browser login and
@@ -19,24 +19,24 @@ returns to the terminal after sign-in. `init` then creates:
 - `bounded.json`, public project configuration safe to commit, with `"sourcePush": true` so every deploy also syncs the project source (see [source-sync.md](source-sync.md))
 - `.gitignore` entries for local OpenApps credentials
 
-No separate authentication command is required before `openapps init`.
+No separate authentication command is required before `npx openapps init`.
 
 ## Deploy
 
 ```bash
-openapps deploy --create --name my-app
+npx openapps deploy --create --name my-app
 ```
 
 The deploy validates and compiles the policy and refuses an invalid one before
 anything changes; fix what the message names and run it again. Never retry
-`openapps deploy --create` on an ambiguous outcome, because it can create another
+`npx openapps deploy --create` on an ambiguous outcome, because it can create another
 app; see the incident router in this skill's SKILL.md.
 
 The create deploy records the new `appId` in `bounded.json`. Later policy
 releases use:
 
 ```bash
-openapps deploy
+npx openapps deploy
 ```
 
 If the project generates `policy.json`, run its generator before both commands.
@@ -46,7 +46,7 @@ If the project generates `policy.json`, run its generator before both commands.
 Build a static output directory, then publish it to the same app:
 
 ```bash
-openapps site deploy ./dist
+npx openapps site deploy ./dist
 ```
 
 The CLI packages the directory as one deterministic gzip-tar artifact and uploads it directly or through resumable multipart transport when needed.
@@ -56,10 +56,10 @@ If the upload receipt reports `liveUrlStatus: "not_mapped"` and the app has no m
 Keep an existing mapping unchanged.
 
 ```bash
-openapps domains slug <unique-slug> --app-id <id>
+npx openapps domains slug <unique-slug> --app-id <id>
 ```
 
-Use the nonempty URL in the JSON receipt, or resolve the environment-qualified slug with `openapps domains list --app-id <id> --env <environment> --json`.
+Use the nonempty URL in the JSON receipt, or resolve the environment-qualified slug with `npx openapps domains list --app-id <id> --env <environment> --json`.
 Keep the returned hostname exactly; do not invent an app-id URL or change site privacy to obtain one.
 
 ## Publish an Owned OpenApps frontend from local source
@@ -68,12 +68,12 @@ An external coding agent acting for the creator can publish a tested frontend di
 The app having its own agent does not by itself require an AI run or an AI-credit top-up.
 This workflow differs from the app's own agent, which follows its runtime instructions for previews and releases.
 
-Work from the current published source (`openapps clone <app-id> <directory>`, or `openapps pull` in an existing clean clone), review the local diff, and run the app's build and relevant checks.
-Confirm the target and identity with `bounded.json`, `openapps whoami`, and `openapps access --app-id <app-id>`.
+Work from the current published source (`npx openapps clone <app-id> <directory>`, or `npx openapps pull` in an existing clean clone), review the local diff, and run the app's build and relevant checks.
+Confirm the target and identity with `bounded.json`, `npx openapps whoami`, and `npx openapps access --app-id <app-id>`.
 Then publish the built frontend with its matching source:
 
 ```bash
-openapps site deploy ./dist --app-id <app-id> --with-source --json
+npx openapps site deploy ./dist --app-id <app-id> --with-source --json
 ```
 
 Check both `siteLive` and `sourceSync.status` in the receipt, and verify the requested change at its returned live URL.
@@ -85,7 +85,7 @@ Owner access alone does not override sale, Open-app, publication, or boundary re
 If the platform refuses the operation, diagnose that refusal and use the permitted release workflow; do not remove guards or change ownership to force a deploy.
 In particular, a sale or Open app is platform-held and does not have this creator publishing path.
 
-`openapps propose --submit` posts a code change for the app agent.
+`npx openapps propose --submit` posts a code change for the app agent.
 Adding `--apply` asks that agent to apply the patch as written, but still uses an agent run and the normal release decision; it does not avoid AI funding requirements.
 Repository instructions saying "nobody deploys an OpenApp directly" must distinguish this external creator workflow from the app agent's runtime workflow.
 
@@ -97,7 +97,7 @@ immediately. Only hosted login checks origins; register your dev origin once
 (owner-run, port-exact, ~30s to take effect):
 
 ```bash
-openapps domains origins add http://localhost:5173 --app-id <id>
+npx openapps domains origins add http://localhost:5173 --app-id <id>
 ```
 
 Details: [develop on localhost](../../openapps-frontend/docs/building-a-webapp.md#develop-on-localhost).
@@ -105,7 +105,7 @@ Details: [develop on localhost](../../openapps-frontend/docs/building-a-webapp.m
 ## Confirm the release
 
 ```bash
-openapps apps inspect --app-id <id> --json
+npx openapps apps inspect --app-id <id> --json
 ```
 
 For release-critical work, confirm the active policy/runtime publication before
@@ -115,7 +115,7 @@ testing. Test one intended user flow and one policy-denied boundary.
 
 Read `bounded.json` first. It identifies the environment, app, policy path, and
 developer account source. Do not create a replacement app merely because the
-current account lacks access; use `openapps whoami`, `openapps access`, and the
+current account lacks access; use `npx openapps whoami`, `npx openapps access`, and the
 [access playbook](access-playbook.md).
 
 ## Multiple app IDs from one project
@@ -146,8 +146,8 @@ Use named instances when several app IDs intentionally share policy and frontend
 Create and deploy only the empty instance, then publish its frontend:
 
 ```bash
-openapps deploy --create --name poofnet-empty --instance poofnet-empty
-openapps site deploy ./dist --instance poofnet-empty
+npx openapps deploy --create --name poofnet-empty --instance poofnet-empty
+npx openapps site deploy ./dist --instance poofnet-empty
 ```
 
 The create command writes the new `appId` only into `instances.poofnet-empty`.

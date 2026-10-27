@@ -53,7 +53,7 @@ rules - it just declares that your app accepts crypto.
    wallet: sign in at `auth.bounded.sh/wallet` and copy the address. (Any Solana
    address or PDA works - it just has to be one you control.)
 2. **Declare it in `policy.json`** with the block above, then
-   `openapps deploy`. Allow ~30-40s for the policy to take effect.
+   `npx openapps deploy`. Allow ~30-40s for the policy to take effect.
 3. **Accept payments** via the intents API (below). Add `notify` if you want an
    email each time money lands.
 

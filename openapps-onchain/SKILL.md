@@ -33,7 +33,7 @@ Read only the row matching the current task or term.
 | Who holds funds, who signs, escrow vs named PDA vs user wallet, `@AccountPlugin.createAccount`, account-id hygiene, create-fund-use idiom | [custody and PDAs](docs/custody-and-pdas.md) |
 | A complete policy for an escrow, vault, treasury, staking, market, launch, NFT, Token-2022, randomness, or liquidity app | [examples index](docs/examples.md) |
 | A failing onchain write: error lookup, rent, ATA payer, transaction limits, confirmation, environment differences | [onchain troubleshooting](docs/onchain-troubleshooting.md) |
-| Fund any wallet with simulated SOL, USDC, or another token on Poofnet, `openapps wallet fund`, `realtime_offchain` | [Poofnet onchain simulation](docs/onchain.md#poofnet-onchain-simulation-on-realtime_offchain) |
+| Fund any wallet with simulated SOL, USDC, or another token on Poofnet, `npx openapps wallet fund`, `realtime_offchain` | [Poofnet onchain simulation](docs/onchain.md#poofnet-onchain-simulation-on-realtime_offchain) |
 | `SOLANA_DEVNET_RPC_URL is required`, `SOLANA_MAINNET_RPC_URL`, `validate pre-built transaction`, submission fails before signing, no `--rpc-url` flag, public-RPC fallback | [CLI submission needs an explicit RPC endpoint](docs/onchain-troubleshooting.md#cli-submission-needs-an-explicit-rpc-endpoint) |
 | Browser onchain `set()` cannot submit, `chain` in `init()`, default Helius RPC, optional top-level `rpcUrl` override | [Browser/SDK RPC defaults and overrides](docs/onchain-troubleshooting.md#browsersdk-rpc-defaults-and-overrides) |
 | `onchain account resolution failed (422)`, `onchain account not found: <pubkey>`, a write naming an account that does not exist on chain, wrong mint/pool derivation, 1-arg vs 3-arg `getTokenMintAddress` mismatch | [Missing onchain accounts vs platform 502s](docs/onchain-troubleshooting.md#missing-onchain-accounts-vs-platform-502s) |
@@ -79,17 +79,17 @@ Read only the row matching the current task or term.
   This literal is Devnet-specific and must be updated if the deployed program changes.
   See [policy-primitives.md](docs/policy-primitives.md#contractaddress-is-a-sentinel-not-the-escrow-address).
 - Treat discovery, deployed-runtime support, and live-network verification as three independent states.
-- Use `openapps plugins list --json` and `openapps plugins describe <plugin.function> --json` as the offline callable signature source before authoring a hook.
+- Use `npx openapps plugins list --json` and `npx openapps plugins describe <plugin.function> --json` as the offline callable signature source before authoring a hook.
 - Check the [Solana devnet capability catalog](docs/solana-capability-status.md) before proposing any plugin or primitive.
 - Never infer devnet support from a compiler tag, manifest, proof contract, Poofnet model, lookup-table entry, or local validator test.
-- When live evidence uses a hosted release marker, resolve its environment-qualified site URL from `openapps domains list --app-id <id> --env <environment> --json` `slugUrl` or the exact successful site-deploy receipt `url`.
+- When live evidence uses a hosted release marker, resolve its environment-qualified site URL from `npx openapps domains list --app-id <id> --env <environment> --json` `slugUrl` or the exact successful site-deploy receipt `url`.
   Require the JSON field itself for staging evidence instead of copying a human-rendered hostname.
-  `openapps apps inspect` proves the active policy/runtime publication and carries no hosted URL.
+  `npx openapps apps inspect` proves the active policy/runtime publication and carries no hosted URL.
 - Never emit runtime-v2 primitives for a runtime-v1 deployment; follow [docs/policy-primitives.md](docs/policy-primitives.md).
 - Put a named query on the collection its plugins allow: `onchain: true` for chain reads over onchain data, `onchain: false` for anything calling an offchain-only plugin (such as `@DeFiPlugin.getSwapQuote`) or reading offchain documents. Both run on Solana apps. Anonymous execution is admitted for identity-independent queries whose path read rule authorizes the caller; a query reading `@user.address`/`@user.evmAddress` requires that identity. The anonymous surface is the browser SDK, not the CLI. On Solana mainnet a signed-out chain query currently fails, so require a signed-in wallet there until the platform's query payer fix ships.
 - Treat runtime-v3 governance the same way: enroll only after the deployed capability registry reports v3, and publish governance from observed chain state rather than policy intent.
 - Keep Poofnet and Solana behavior paired.
-- Use `openapps wallet fund` only for explicit development funding on `realtime_offchain`.
+- Use `npx openapps wallet fund` only for explicit development funding on `realtime_offchain`.
   The caller must be the app owner, an admin, or a developer, and the balance exists only inside the selected app's simulated ledger.
 - Pure/read primitives must return the same shape in runtimes where they are actually executable, and mutating primitives must apply a modeled effect or fail closed.
 - Validation-only success is a parity bug.

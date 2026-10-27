@@ -6,14 +6,14 @@
 
 For EVERY capability the user asks for, resolve it in this order and never
 skip to a workaround. The catalog tells you which rung you are on: every
-`openapps services search` item carries a readiness of `live`, `callable`, or
+`npx openapps services search` item carries a readiness of `live`, `callable`, or
 `requestable`.
 
 1. **Native or live first.** Does the runtime provide it? `ctx.ai` (LLMs,
    images, video - no keys), `ctx.email`, files, auth, collections, direct
    crypto and provider payment rails, embedded wallets and DEX/token plugins,
    data/auth/realtime/files/functions. Or is it a **live** catalog action?
-   `openapps services search "<need>"`, then `openapps services describe <slug>`,
+   `npx openapps services search "<need>"`, then `npx openapps services describe <slug>`,
    then author the code that calls `ctx.services.invoke("<slug>", args,
    { idempotencyKey })` under the app's `service:cap` grant. Route to
    **openapps-backend**, **openapps-frontend**, **openapps-onchain** for the
@@ -27,16 +27,16 @@ skip to a workaround. The catalog tells you which rung you are on: every
    `service:x402` grant - see the next section.
    This removes a separate vendor account setup step; calls still spend app credits and must stay within the task's authorized budget and the app's policy.
 3. **Request it, then call it out.** Neither exists? File it once,
-   platform-wide: `openapps services request "<what you need>"`. A steward
+   platform-wide: `npx openapps services request "<what you need>"`. A steward
    reviews it, and the Hub emails you when it is live; follow it with
-   `openapps services status`. Then say so, plainly, BEFORE building around
+   `npx openapps services status`. Then say so, plainly, BEFORE building around
    it, and continue the independent work within the requested scope. Do not quietly wire a
    dependency that a person controls. The app's own agent follows the same
    ladder.
 
 Two grants make the ladder real for an oApp, and the request to open requires
 both in a locked `boundaries.egress` entry of the app's policy: `service:cap`
-(live catalog actions) and `service:x402` (the relay). `openapps oapp preflight`
+(live catalog actions) and `service:x402` (the relay). `npx openapps oapp preflight`
 reports them as missing before the request to open refuses on them
 (`oapp_opening_capability_grants_missing`).
 
@@ -60,7 +60,7 @@ Never "temporarily" add a user-held secret to an app headed for an APO.
 ### What counts as a forbidden dependency
 
 - API keys or tokens the creator obtained from a vendor (even via
-  `openapps secret put` - a key the creator sets is fine while the app is Owned,
+  `npx openapps secret put` - a key the creator sets is fine while the app is Owned,
   not in an APO, whose pitch is that no person is a dependency). A key the app's own agent
   obtains itself and donates to the app is not one: no person holds it, and
   the platform adds it to the app's requests to that key's hosts; a function

@@ -39,7 +39,7 @@ caller, so `auth: "true"` means any logged-in caller may invoke it and
 that declares `actAs` writes as a backend/service identity and is therefore
 privileged: its `auth` rule must imply the app's admin predicate, and nothing
 checks that for you. Two runtime-valid gates satisfy it. The control-plane roster - the app owner and
-every `openapps share --role admin` collaborator, which the runtime exposes as the
+every `npx openapps share --role admin` collaborator, which the runtime exposes as the
 reserved `__owners__`/`__admins__` sets - needs no collection at all:
 `@user.id != null && (get(/__owners__/@user.id) != null || get(/__admins__/@user.id) != null)`.
 An app-data `admins/$userId` collection works too, gated as
@@ -118,7 +118,7 @@ paths and `links`, declared once at the root of the policy:
 ```
 
 Seed `admins/<FOUNDER>` once as the founder after deploy, with `{ "active": true }`.
-`openapps data set` does not bypass rules; the founder disjunct is what makes the
+`npx openapps data set` does not bypass rules; the founder disjunct is what makes the
 first write possible. After that, active admins may create later admin rows. See
 [admin-and-ownership.md](admin-and-ownership.md#bootstrapping-the-first-admin--the-genesis-flow).
 The gate is a **real off-switch**: every privileged rule and the `syncStripe`
@@ -185,8 +185,8 @@ export default async function (args, ctx) {
 | `ctx.user` | `{ id, address, email, claims, system? }` — the verified caller for a normal function. `ctx.user.id` is the **universal stable identity** (always present; equals `@user.id` in policy) — use it for ownership/membership. `ctx.user.address` is a **real onchain wallet** (equals `@user.address`; present by default for supported email/social logins, null for phone-only sessions, `auth.wallets: false` apps, and the legacy lazy `authMode: "bounded"` path) — use it only for onchain/wallet semantics. For an `actAs` function, OpenApps first evaluates `auth` against the original caller and then sets `ctx.user.id == ctx.user.address == actAs`; `ctx.bounded` uses that same service identity. The function body does not receive the original caller as `ctx.user`. |
 | `ctx.auth` | `{ enforced, rule, system }` — **authorization the platform ALREADY did for you.** `rule` is the exact policy `auth` expression that passed before your code ran (null for system/scheduled runs). Read this instead of re-implementing authz: if you declared an `auth` gate, it has already passed. |
 | `ctx.bounded` | A pre-authed data client: `ctx.bounded.get(path)`, `.set(path, doc)`, `.setMany([{ path, document }, ...])`, `.delete(path)`, and `ctx.bounded.runQuery(path, queryName, args?)`. **Writes are re-checked by enforced rules and invariants** — a `409` throws. `setMany` is one atomic batch, so use it for transfers/settlement. `runQuery` runs one of your policy-declared, deploy-validated queries under the acting identity's read authority, so you **reuse policy logic for authz/data instead of re-implementing it** (e.g. an `isTeamMember` query). |
-| `ctx.env` | The resolved secrets, narrowed to the names in `functions.<name>.secrets`. Values come from the app secret store (`openapps secret put`); bare `--secret NAME` declares exposure on a standalone deploy, while legacy `--secret NAME=VALUE` overrides the store for that function version. Nothing undeclared leaks in. |
-| `ctx.secrets` | The documented secret accessor: `await ctx.secrets.get("NAME")` returns the value (or null). Reads the **same** resolved map as `ctx.env`, so `openapps secret put OPENAI_KEY …` → `ctx.secrets.get("OPENAI_KEY")` works. See [secrets.md](secrets.md). |
+| `ctx.env` | The resolved secrets, narrowed to the names in `functions.<name>.secrets`. Values come from the app secret store (`npx openapps secret put`); bare `--secret NAME` declares exposure on a standalone deploy, while legacy `--secret NAME=VALUE` overrides the store for that function version. Nothing undeclared leaks in. |
+| `ctx.secrets` | The documented secret accessor: `await ctx.secrets.get("NAME")` returns the value (or null). Reads the **same** resolved map as `ctx.env`, so `npx openapps secret put OPENAI_KEY …` → `ctx.secrets.get("OPENAI_KEY")` works. See [secrets.md](secrets.md). |
 | `ctx.ai` | **The built-in AI router — chat (`run`), images (`generateImage`), video (`generateVideo`/`getJob`). No API key.** Routes any model through the OpenApps AI Gateway, billed to the app owner's credit pool, capped fail-closed. This is how you add an LLM — or native image/video generation — to your app; see [§ctx.ai](functions-ctx-ai.md) and [§media](functions-ctx-ai.md#ctxai-media-generation--images-sync-and-video-async-jobs) below. |
 | `ctx.services` | **Managed third-party API discovery and proxy invoke — `search`, `describe`, `invoke`.** Search/describe help agents find the right API shape. Invoke runs through OpenApps' managed provider proxy, billed to the app owner's credit pool at the applicable upstream service cost plus 5%, capped fail-closed. See [§ctx.services](functions-ctx-services.md). |
 | `ctx.enqueue` | **Background jobs — `ctx.enqueue(functionName, payload?, opts?)` → `{ jobId }`.** Schedule another deployed function (or this one) to run *later*, server-side, without blocking. The queued run is never deputized as the enqueuer: a job from a trusted caller executes as the **null system principal** (`ctx.user.id == null`, `ctx.user.system == true`) and the target must opt in with `queueCallable: true`, while a job that descends from a public route replays as **that route's reserved principal** and the target must opt in with `publicQueueCallable: true` instead. Either way it receives `payload` as its `args` and meters compute usage exactly like an HTTP invocation. See [§ctx.enqueue](functions-ctx-enqueue.md). |
@@ -232,7 +232,7 @@ function that does not use it never loads it.
 | You need | Read |
 |---|---|
 | `ctx.ai.run`, `ctx.ai.generateImage`, `ctx.ai.generateVideo`, `getJob`, AI budgets | [functions-ctx-ai.md](functions-ctx-ai.md) |
-| `ctx.services`, managed third-party APIs, `openapps services` | [functions-ctx-services.md](functions-ctx-services.md) |
+| `ctx.services`, managed third-party APIs, `npx openapps services` | [functions-ctx-services.md](functions-ctx-services.md) |
 | `ctx.browser`, headless browser, smoke tests, egress-fenced browsing | [functions-ctx-browser.md](functions-ctx-browser.md) |
 | `ctx.enqueue`, background jobs, queues, `queueCallable`, `publicQueueCallable`, replay identity | [functions-ctx-enqueue.md](functions-ctx-enqueue.md) |
 | `ctx.build`, functions that originate app builds, promotion profiles | [functions-ctx-build.md](functions-ctx-build.md) |
@@ -249,10 +249,10 @@ and the target opts in with `publicQueueCallable` instead. See
 
 A function declared `public: true` answers plain HTTP at the app's API host with no session; see [public functions](public-functions.md).
 For authenticated functions, use the CLI or the appropriate SDK client below.
-The CLI attaches the same session token as `openapps data`, so OpenApps verifies your identity and evaluates the function's `auth` rule before running it:
+The CLI attaches the same session token as `npx openapps data`, so OpenApps verifies your identity and evaluates the function's `auth` rule before running it:
 
 ```sh
-openapps functions invoke syncStripe --app-id <id> --data '{"customerId":"cus_123"}'
+npx openapps functions invoke syncStripe --app-id <id> --data '{"customerId":"cus_123"}'
 ```
 
 It prints the function's JSON result, or fails with a public error such as
@@ -316,16 +316,16 @@ fix) are in the same section; they apply to every lane.
 ## Deploy a function
 
 ```sh
-openapps functions deploy syncStripe \
+npx openapps functions deploy syncStripe \
   --entry functions/syncStripe.ts \
   --app-id <id> \
   --auth 'get(/admins/@user.id).active == true' \
   --secret STRIPE_KEY \
   --timeout 30
 
-printf '%s' "$STRIPE_KEY" | openapps secret put STRIPE_KEY --value-stdin --app-id <id>
-openapps functions list   --app-id <id>
-openapps functions logs   syncStripe --app-id <id>
+printf '%s' "$STRIPE_KEY" | npx openapps secret put STRIPE_KEY --value-stdin --app-id <id>
+npx openapps functions list   --app-id <id>
+npx openapps functions logs   syncStripe --app-id <id>
 ```
 
 The `--entry` may be **TypeScript or JavaScript**. Type annotations are fine.
@@ -370,10 +370,10 @@ or a raw Solana keypair array - and redirects you to the supported path:
 ```
 refusing to package infra/service-account.json (imported by function entry syncStripe.ts):
 it looks like a service-account key. A function must not bundle a credential file -
-store the value with `openapps secret put <NAME>` and read it from ctx.env at invoke time.
+store the value with `npx openapps secret put <NAME>` and read it from ctx.env at invoke time.
 ```
 
-The supported path is [secrets](secrets.md): `openapps secret put NAME` stores the
+The supported path is [secrets](secrets.md): `npx openapps secret put NAME` stores the
 value per app, you declare `NAME` under `functions.<name>.secrets`, and the
 function reads it from `ctx.env.NAME` / `ctx.secrets.get("NAME")` - resolved at
 invoke time, never baked into the artifact. If a file genuinely is not a secret
@@ -385,9 +385,9 @@ could edit in the same change that plants the key.
 Two deploy-ordering notes worth knowing:
 - **A policy deploy preserves deployed functions.** When your `policy.json` omits
   the `functions` block, the server carries the already-deployed functions (and
-  their pinned code versions) forward, so a plain `openapps deploy` no longer drops
-  them — no need to re-run `openapps functions deploy` afterward. To remove a
-  function, use `openapps functions delete <name>` (a policy that explicitly
+  their pinned code versions) forward, so a plain `npx openapps deploy` no longer drops
+  them — no need to re-run `npx openapps functions deploy` afterward. To remove a
+  function, use `npx openapps functions delete <name>` (a policy that explicitly
   declares `functions` is still honored verbatim). *(Older behavior wiped the
   functions on any policy deploy; fixed in the dev-api 2026-07-09.)*
 - **Pins take ~20–30s to propagate.** A 404 right after a successful
@@ -450,7 +450,7 @@ export default async function (args, ctx) {
 ```
 
 Invoke it from your admin dashboard with
-`openapps functions invoke syncStripe --app-id <id> --data '{"customerId":"cus_123"}'`
+`npx openapps functions invoke syncStripe --app-id <id> --data '{"customerId":"cus_123"}'`
 (or the TypeScript fetch shown above).
 
 Flow: logged-in admin → invoke (attaches token) → OpenApps auth gate (verify token →
@@ -534,7 +534,7 @@ the all-null system principal, which cannot bill `ctx.ai` or satisfy
 different callers — see [principals-and-origins.md](principals-and-origins.md) for
 the canonical explainer:
 
-1. **User invocation** (`openapps functions invoke`) — gated by the function's
+1. **User invocation** (`npx openapps functions invoke`) — gated by the function's
    `auth` rule. `@user` / `ctx.user` is the verified caller.
 2. **System / scheduled run** (the schedule, below) — authorized by the
    owner-deployed `schedule` itself: it lives in your signed policy, so OpenApps
@@ -679,8 +679,8 @@ principal matrix.
 ## Secrets
 
 Declare secret **names** in the policy `functions.<name>.secrets` or with a bare,
-repeatable `openapps functions deploy --secret NAME`; supply their
-**values** with `openapps secret put NAME --value-stdin --app-id <id>` (the per-app secret
+repeatable `npx openapps functions deploy --secret NAME`; supply their
+**values** with `npx openapps secret put NAME --value-stdin --app-id <id>` (the per-app secret
 store — set once, read by every function/agent in the app). The function reads
 them as `ctx.env.K` **or** `await ctx.secrets.get("K")`. Only declared names are
 exposed — an undeclared key never reaches the function. Secret values are never written into

@@ -1,6 +1,6 @@
 # Quality Checklist
 
-Run this before `openapps deploy`. A policy that deploys clean can still be a *bad*
+Run this before `npx openapps deploy`. A policy that deploys clean can still be a *bad*
 policy — green but hollow (no invariants on money), or green but leaky (a write
 rule that an unauthenticated caller satisfies). This checklist is distilled from
 the eval rubrics that grade generated policies; it catches the difference between
@@ -118,7 +118,7 @@ the eval rubrics that grade generated policies; it catches the difference betwee
 
 ### Tests pass clean
 
-- [ ] **`openapps tests run` passes**, with an allow and a deny test for each
+- [ ] **`npx openapps tests run` passes**, with an allow and a deny test for each
   sensitive seam.
 - [ ] **Every failing test was fixed by strengthening the policy**, never by
   deleting the property or weakening the rule.
@@ -154,7 +154,7 @@ the user actually wanted is hollow. Before you call it done:
   which parts are stubbed and why.
 - [ ] **Money flows through real rails.** Selling credit or charging users → route
   through **OpenApps billing** (`/billing/checkout`, x402) or the owner's
-  `openapps link` + top-up — not a hand-rolled fake checkout.
+  `npx openapps link` + top-up — not a hand-rolled fake checkout.
 - [ ] **You stated the honest scope.** If something is a placeholder, say so up
   front; never present a demo as a finished product.
 
