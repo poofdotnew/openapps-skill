@@ -80,7 +80,7 @@ family.
 | Policy, rules, invariants, functions, data, realtime, actor model, policy tests | **openapps-backend** |
 | Client SDK, web/mobile UI, subscriptions, hosted frontend, app-user authentication | **openapps-frontend** |
 | CLI, deploy, environments, source sync, domains, project config, collaborators, prompt-driven builds | **openapps-deploy** |
-| "Move my existing app to OpenApps", "bring this repo", porting a Supabase/Firebase/Express/Next app, replacing a key-holding backend | **openapps-deploy** ([porting guide](../openapps-deploy/docs/porting-an-existing-app.md)) |
+| Bring or migrate an existing app; first assess preserving its stack and hosting | **openapps-deploy** ([existing app guide](../openapps-deploy/docs/porting-an-existing-app.md)) |
 | A third-party API the app needs: is it on OpenApps, callable through x402, or requestable | **openapps-backend** ([ctx.services](../openapps-backend/docs/functions-ctx-services.md)) |
 | Embedded wallets, Solana, tokens, onchain transactions, onramp | **openapps-onchain** |
 
