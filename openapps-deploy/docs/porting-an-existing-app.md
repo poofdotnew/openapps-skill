@@ -179,5 +179,6 @@ An app headed to an APO is held to the key rules in the ladder section above.
 - `npx openapps deploy` accepted the policy and `npx openapps tests run` passes.
 - `npx openapps site deploy` served the site; a denied write returns `403`, a
   denied read returns an empty `200`.
-- For an oApp: `npx openapps oapp preflight` is READY on the deployed app, and the
-  source is synced so its agent can work from it.
+- For an app brought to OpenApps: the source is synced so its agent can work
+  from it. `npx openapps oapp preflight` checks opening an app, not bringing one
+  (see the **openapps** skill).
