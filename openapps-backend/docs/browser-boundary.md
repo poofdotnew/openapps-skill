@@ -41,6 +41,7 @@ Every page there serves under `script-src 'self'; object-src 'none'; base-uri 'n
 ```
 
 `id` and `mode: "locked"` are required; `title` and `description` are optional.
+The platform adds its own hosts (auth, realtime, functions, `'self'`) to the compiled header, so list only what the app itself reaches.
 The nine directive keys are exactly `connect`, `font`, `form`, `embeddedBy`, `frame`, `img`, `media`, `script`, `style` — an unknown key is rejected by name, not ignored.
 Each list is capped at 32 entries.
 
