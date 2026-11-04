@@ -8,7 +8,7 @@ Argument descriptions and signer markers below are copied from the existing mono
 
 ## Descriptor lane
 
-`@CPI.*` calls are descriptor-bound: the deploy binds program id, account schema, and attested instruction bytes, so policy code cannot vary the shape. They require attested transaction data, which exists only in `hooks.onchain` execution. Custody of the `source` argument varies per descriptor - `memoNote`/`transferLamports` follow the uniform three-form rule, while the Kamino family is wallet-only (the obligation owner). Most Kamino, stake-pool, Raydium and DLMM descriptors additionally carry `NEEDS-RUNTIME-V4` and are refused at deploy until that runtime ships; see [policy-primitives.md](../policy-primitives.md#descriptor-cpi-cpi).
+`@CPI.*` calls are descriptor-bound: the deploy binds program id, account schema, and attested instruction bytes, so policy code cannot vary the shape. They require attested transaction data, which exists only in `hooks.onchain` execution. Custody of the `source` argument varies per descriptor - `memoNote`/`transferLamports` follow the uniform three-form rule, while the Kamino family is wallet-only (the obligation owner).
 
 ## Transactional
 
@@ -21,7 +21,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (not run); markers: LIVE-DLMM-PROOF, NEEDS-RUNTIME-V4.
+- Status: **unverified** (not run); markers: LIVE-DLMM-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -42,7 +42,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET, NEEDS-RUNTIME-V4.
+- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -64,7 +64,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET, NEEDS-RUNTIME-V4.
+- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -131,7 +131,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET, NEEDS-RUNTIME-V4.
+- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -150,7 +150,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET, NEEDS-RUNTIME-V4.
+- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -171,7 +171,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET, NEEDS-RUNTIME-V4.
+- Status: **unsupported** (not run); markers: NO-USABLE-DEVNET-KAMINO-MARKET.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -208,7 +208,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (not run); markers: LIVE-RAYDIUM-PROOF, NEEDS-RUNTIME-V4.
+- Status: **unverified** (not run); markers: LIVE-RAYDIUM-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -230,7 +230,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (not run); markers: LIVE-RAYDIUM-PROOF, NEEDS-RUNTIME-V4.
+- Status: **unverified** (not run); markers: LIVE-RAYDIUM-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -252,7 +252,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (not run); markers: LIVE-RAYDIUM-PROOF, NEEDS-RUNTIME-V4.
+- Status: **unverified** (not run); markers: LIVE-RAYDIUM-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -274,7 +274,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (not run); markers: LIVE-STAKEPOOL-PROOF, NEEDS-RUNTIME-V4.
+- Status: **unverified** (not run); markers: LIVE-STAKEPOOL-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -294,7 +294,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (not run); markers: LIVE-STAKEPOOL-PROOF, NEEDS-RUNTIME-V4.
+- Status: **unverified** (not run); markers: LIVE-STAKEPOOL-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -313,7 +313,7 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (local policy verified; live not run); markers: LIVE-PENDING, NEEDS-RUNTIME-V4.
+- Status: **unverified** (local policy verified; live not run); markers: LIVE-PENDING.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
