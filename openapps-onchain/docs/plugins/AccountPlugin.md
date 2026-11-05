@@ -2,8 +2,6 @@
 
 Named app PDAs (per-entity escrow/vault accounts) - create them and read their addresses.
 
-Check every function's row in [solana-capability-status.md](../solana-capability-status.md) before treating it as live; support states below are a snapshot of that table.
-
 Argument descriptions and signer markers below are copied from the existing monorepo manifest. `-` under `Signer in manifest` means undeclared, not confirmed non-signing.
 
 ## Custody in one paragraph
@@ -37,7 +35,6 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unverified** (source parity only); markers: LIVE-PENDING.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -53,7 +50,6 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 
 - Callable from: onchain rules, onchain named queries, `hooks.onchain`, offchain rules, offchain named queries
 - Returns: `string`
-- Status: **unverified** (source parity only); markers: LIVE-PENDING; DEVNET-ESCROW-SENTINEL.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|

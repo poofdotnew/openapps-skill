@@ -2,8 +2,6 @@
 
 DFlow prediction-market orders and KYC status.
 
-Check every function's row in [solana-capability-status.md](../solana-capability-status.md) before treating it as live; support states below are a snapshot of that table.
-
 Argument descriptions and signer markers below are copied from the existing monorepo manifest. `-` under `Signer in manifest` means undeclared, not confirmed non-signing.
 
 ## Transactional
@@ -17,7 +15,6 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 ```
 
 - Callable from: `hooks.onchain`
-- Status: **unsupported** (not run); markers: NO-DEVNET-DFLOW.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -37,7 +34,6 @@ Use the per-function `Callable from` line below. A `false` return or thrown erro
 
 - Callable from: offchain rules, offchain named queries
 - Returns: `boolean`
-- Status: **unsupported** (not run); markers: NO-DEVNET-DFLOW.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|

@@ -2,8 +2,6 @@
 
 Pyth price reads by 64-hex feed id.
 
-Check every function's row in [solana-capability-status.md](../solana-capability-status.md) before treating it as live; support states below are a snapshot of that table.
-
 Argument descriptions and signer markers below are copied from the existing monorepo manifest. `-` under `Signer in manifest` means undeclared, not confirmed non-signing.
 
 ## Price units and integer rules
@@ -47,7 +45,6 @@ The frontend must use the same scale and rounding when deciding how much SOL is 
 
 - Callable from: onchain rules, onchain named queries, `hooks.onchain`, offchain rules, offchain named queries
 - Returns: `string`
-- Status: **unverified** (source parity only); markers: LIVE-PYTH-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
@@ -62,7 +59,6 @@ The frontend must use the same scale and rounding when deciding how much SOL is 
 
 - Callable from: onchain rules, onchain named queries, `hooks.onchain`, offchain rules, offchain named queries
 - Returns: `uint`
-- Status: **unverified** (source parity only); markers: NEEDS-RUNTIME-V8; LIVE-PYTH-PROOF.
 
 | Arg | Type | Required | Signer in manifest | Description |
 |---|---|---|---|---|
