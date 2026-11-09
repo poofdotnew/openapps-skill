@@ -35,7 +35,7 @@ Read only the row matching the current task or term.
 | Link a user's X account, `connect('x')`, `completeConnection`, `getConnections`, verified X handle, `__connections__` | [connected accounts](docs/connected-accounts.md) |
 | Hosted frontend and app URLs | [frontend hosting](docs/frontend-hosting.md) |
 | Hide or limit the hosted widget, `/__bounded/widget.js`, `openApps.widget.visibility` | [hide the widget](docs/frontend-hosting.md#hide-the-widget) |
-| A Next.js app that runs its server (vinext), its secrets and limits | [server apps](docs/server-apps.md) |
+| A Next.js (vinext) or Express app that runs its server, its secrets and limits | [server apps](docs/server-apps.md) |
 | CLI developer login or `npx openapps login` | [developer accounts](../openapps-deploy/docs/accounts.md) |
 | Embedded wallet, `auth.wallets`, `@user.address` after email/social login | [embedded wallets](../openapps-onchain/docs/embedded-wallets.md) |
 | `onramp()`, buy SOL/USDC by card, Coinbase Onramp, wallet top-up | [onramp](../openapps-onchain/docs/onramp.md) |
