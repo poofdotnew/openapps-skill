@@ -18,6 +18,7 @@ Use this skill for the app's capability constraints and, when requested, its lif
   `npx openapps propose --submit --apply` still asks the app agent to apply it; it is not the no-AI publishing path.
 - **External coding agent bringing an app the creator already has:** deploy it with source under the creator's account ([porting](../openapps-deploy/docs/porting-an-existing-app.md)); the creator brings it in from the OpenApps launch page, and it stays Owned.
   Bringing an app needs no `"oapp": true`, egress boundary, or `npx openapps oapp preflight`; those belong to opening it (an APO).
+  The launch page's snippet says `deploy --create` for every project; a folder with `openapps.json` is already deployed, so deploy without it. Then [bring it in](docs/bring-your-app.md): one link, two short answers.
 - **Creator asking to open an app:** use the lifecycle, launch-gate, and preflight references for the current phase.
   A build or edit request does not by itself request opening; continue work already authorized by the user.
 - **Agent running on an OpenApps app computer:** the app already exists and you are its agent.
@@ -139,6 +140,7 @@ Read the reference needed for the current task.
 | App capability availability, unsupported dependencies, catalog requests, x402 payment and recovery semantics | [Capability ladder](docs/capability-ladder.md) |
 | What opening checks: oApp mode, required boundaries and egress grants, secrets, the served site, `npx openapps propose` | [Launch gate](docs/launch-gate.md) |
 | `npx openapps oapp preflight` and its report | [Preflight](docs/preflight.md) |
+| The launch page's snippet, the handover link, the two questions and their limits | [Bringing an app in](docs/bring-your-app.md) |
 | Hide the platform widget on an Owned app (an Open app always shows it) | [Hide the widget](../openapps-frontend/docs/frontend-hosting.md#hide-the-widget) |
 | Preparing to ask to open | [Opening checklist](docs/checklist.md) |
 | Sealed launch economics, treasury fees, pending claims, operating reserves, how credits stay funded, and the agent's daily limit | [Launch economics](docs/launch-economics.md) |
